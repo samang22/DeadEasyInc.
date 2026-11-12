@@ -5,7 +5,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "InputMappingContext.h"
-#include "DeadEasyIncCameraManager.h"
+#include "Player/DeadEasyIncCameraManager.h"
 #include "HorrorCharacter.h"
 #include "HorrorUI.h"
 #include "DeadEasyInc.h"

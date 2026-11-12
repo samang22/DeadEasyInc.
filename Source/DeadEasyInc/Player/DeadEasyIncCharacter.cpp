@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "DeadEasyIncCharacter.h"
+#include "Player/DeadEasyIncCharacter.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -9,9 +9,14 @@
 #include "InputActionValue.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "DeadEasyInc.h"
+#include "Shared/Health/CombatHealthComponent.h"
+#include "Player/Data/PlayerSettings.h"
+#include "Interaction/BuildingRepairComponent.h"
 
 ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 {
+    CreateDefaultSubobject<UCombatHealthComponent>(TEXT("CombatHealth"));
+    WallRepair = CreateDefaultSubobject<UBuildingRepairComponent>(TEXT("WallRepair"));
 	// Set size for collision capsule
 	GetCapsuleComponent()->InitCapsuleSize(55.f, 96.0f);
 	
@@ -44,12 +49,31 @@ ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 	GetCharacterMovement()->AirControl = 0.5f;
 }
 
+void ADeadEasyIncCharacter::BeginPlay()
+{
+    Super::BeginPlay();
+    if (Settings)
+    {
+        if (UCombatHealthComponent* HealthComponent = FindComponentByClass<UCombatHealthComponent>())
+        {
+            HealthComponent->MaxHealth = FMath::Max(1.f, Settings->MaxHealth);
+            HealthComponent->Health = HealthComponent->MaxHealth;
+        }
+    }
+}
+
 void ADeadEasyIncCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {	
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
 		// Jumping
+        if (RepairAction)
+        {
+            EnhancedInputComponent->BindAction(RepairAction, ETriggerEvent::Started, WallRepair.Get(), &UBuildingRepairComponent::StartRepair);
+            EnhancedInputComponent->BindAction(RepairAction, ETriggerEvent::Completed, WallRepair.Get(), &UBuildingRepairComponent::StopRepair);
+            EnhancedInputComponent->BindAction(RepairAction, ETriggerEvent::Canceled, WallRepair.Get(), &UBuildingRepairComponent::StopRepair);
+        }
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Started, this, &ADeadEasyIncCharacter::DoJumpStart);
 		EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Completed, this, &ADeadEasyIncCharacter::DoJumpEnd);
 

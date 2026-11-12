@@ -1,11 +1,11 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 
-#include "DeadEasyIncPlayerController.h"
+#include "Player/DeadEasyIncPlayerController.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "InputMappingContext.h"
-#include "DeadEasyIncCameraManager.h"
+#include "Player/DeadEasyIncCameraManager.h"
 #include "Blueprint/UserWidget.h"
 #include "DeadEasyInc.h"
 #include "Widgets/Input/SVirtualJoystick.h"

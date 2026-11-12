@@ -11,6 +11,7 @@ class UInputComponent;
 class USkeletalMeshComponent;
 class UCameraComponent;
 class UInputAction;
+class UBuildingRepairComponent;
 struct FInputActionValue;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
@@ -33,6 +34,11 @@ class ADeadEasyIncCharacter : public ACharacter
 
 protected:
 
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Repair")
+    TObjectPtr<UBuildingRepairComponent> WallRepair;
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Input")
+    TObjectPtr<UInputAction> RepairAction;
+
 	/** Jump Input Action */
 	UPROPERTY(EditAnywhere, Category ="Input")
 	UInputAction* JumpAction;
@@ -51,6 +57,9 @@ protected:
 	
 public:
 	ADeadEasyIncCharacter();
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Settings")
+    TObjectPtr<class UPlayerSettings> Settings;
+    virtual void BeginPlay() override;
 
 protected:
 

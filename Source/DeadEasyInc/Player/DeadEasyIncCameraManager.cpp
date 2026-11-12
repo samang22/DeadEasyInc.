@@ -1,7 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 
-#include "DeadEasyIncCameraManager.h"
+#include "Player/DeadEasyIncCameraManager.h"
 
 ADeadEasyIncCameraManager::ADeadEasyIncCameraManager()
 {

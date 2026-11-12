@@ -1,6 +1,6 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
-#include "DeadEasyIncGameMode.h"
+#include "Core/DeadEasyIncGameMode.h"
 
 ADeadEasyIncGameMode::ADeadEasyIncGameMode()
 {
