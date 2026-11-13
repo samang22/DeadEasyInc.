@@ -10,13 +10,16 @@ void UCombatHealthComponent::BeginPlay()
     GetOwner()->OnTakeAnyDamage.AddDynamic(this, &UCombatHealthComponent::ReceiveDamage);
 }
 
-float UCombatHealthComponent::RestoreHealth(float Amount)
+float UCombatHealthComponent::RestoreHealth(float Amount, bool bAllowFromZero)
 {
-    // Repair is deliberately separate from resurrection.
-    if (Amount <= 0.f || Health <= 0.f) return 0.f;
+    if (Amount <= 0.f || (Health <= 0.f && !bAllowFromZero)) return 0.f;
     const float Previous = Health;
     Health = FMath::Min(MaxHealth, Health + Amount);
-    if (Health > Previous) OnHealthChanged.Broadcast(Health, MaxHealth);
+    if (Health > Previous)
+    {
+        if (Previous <= 0.f) GetOwner()->Tags.Remove(TEXT("Dead"));
+        OnHealthChanged.Broadcast(Health, MaxHealth);
+    }
     return Health - Previous;
 }
 

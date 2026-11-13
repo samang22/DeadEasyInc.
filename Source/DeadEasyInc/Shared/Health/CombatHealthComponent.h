@@ -21,7 +21,7 @@ public:
     UPROPERTY(BlueprintAssignable, Category="Health")
     FCombatDepleted OnDepleted;
     UFUNCTION(BlueprintCallable, Category="Health")
-    float RestoreHealth(float Amount);
+    float RestoreHealth(float Amount, bool bAllowFromZero = false);
 protected:
     virtual void BeginPlay() override;
 private:

@@ -2,11 +2,14 @@
 #include "Buildings/Data/BuildingSettings.h"
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Zombies/AI/BuildingTargetRegistry.h"
+#include "Engine/World.h"
 
 ABuilding::ABuilding()
 {
     CombatHealth = CreateDefaultSubobject<UCombatHealthComponent>(TEXT("CombatHealth"));
     GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
+    GetStaticMeshComponent()->SetCanEverAffectNavigation(false);
 }
 
 void ABuilding::BeginPlay()
@@ -20,6 +23,13 @@ void ABuilding::BeginPlay()
     CombatHealth->OnHealthChanged.AddDynamic(this, &ABuilding::UpdateCondition);
     CombatHealth->OnDepleted.AddDynamic(this, &ABuilding::HandleBuildingDestroyed);
     UpdateCondition(CombatHealth->Health, CombatHealth->MaxHealth);
+    GetWorld()->GetSubsystem<UBuildingTargetRegistry>()->Register(this);
+}
+
+void ABuilding::EndPlay(const EEndPlayReason::Type Reason)
+{
+    if (UBuildingTargetRegistry* Registry=GetWorld()->GetSubsystem<UBuildingTargetRegistry>()) Registry->Unregister(this);
+    Super::EndPlay(Reason);
 }
 
 void ABuilding::UpdateCondition(float Health, float MaxHealth)
@@ -33,21 +43,42 @@ void ABuilding::UpdateCondition(float Health, float MaxHealth)
         for (int32 Index = 0; Index < GetStaticMeshComponent()->GetNumMaterials(); ++Index)
             GetStaticMeshComponent()->SetMaterial(Index, Material);
     const bool bChanged = NewCondition != Condition;
+    if ((NewCondition==EBuildingCondition::Destroyed)!=(Condition==EBuildingCondition::Destroyed))
+        GetWorld()->GetSubsystem<UBuildingTargetRegistry>()->GeometryChanged();
     Condition = NewCondition;
     ApplyConditionState();
     if (bChanged) OnConditionChanged(Condition);
 }
 
-void ABuilding::ApplyConditionState() {}
+void ABuilding::ApplyConditionState()
+{
+    GetStaticMeshComponent()->SetCollisionEnabled(Condition==EBuildingCondition::Destroyed ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
+}
 
 bool ABuilding::CanRepair() const
 {
-    return bRepairAllowed && (!Settings || Settings->bCanRepair) && CombatHealth->Health > 0.f && CombatHealth->Health < CombatHealth->MaxHealth;
+    return bRepairAllowed && (!Settings || Settings->bCanRepair) && CombatHealth->Health < CombatHealth->MaxHealth &&
+        (CombatHealth->Health > 0.f || CanRestoreCollision());
 }
 
 float ABuilding::Repair(float Amount)
 {
-    return CanRepair() ? CombatHealth->RestoreHealth(Amount) : 0.f;
+    if (!CanRepair() || Amount <= 0.f) return 0.f;
+    if (CombatHealth->Health > 0.f) return CombatHealth->RestoreHealth(Amount);
+    const float Work = FMath::Min(Amount, GetRestorationTarget()-RestorationProgress);
+    RestorationProgress += Work;
+    if (RestorationProgress >= GetRestorationTarget())
+    {
+        CombatHealth->RestoreHealth(RestorationProgress,true);
+        RestorationProgress = 0.f;
+    }
+    return Work;
+}
+
+bool ABuilding::CanRestoreCollision() const { return true; }
+float ABuilding::GetRestorationTarget() const
+{
+    return CombatHealth->MaxHealth * FMath::Clamp(Settings ? Settings->RestorationHealthRatio : .25f,.01f,1.f);
 }
 
 FText ABuilding::GetBuildingName() const

@@ -1,4 +1,14 @@
 #include "Zombies/BorderZombie.h"
+#include "Zombies/AI/BuildingTargetRegistry.h"
+#include "Buildings/Building.h"
+#include "Buildings/Heating/CentralBoiler.h"
+#include "Buildings/Defense/BorderWall.h"
+#include "Buildings/Data/BuildingSettings.h"
+#include "Shared/Health/CombatHealthComponent.h"
+#include "NavigationSystem.h"
+#include "NavigationPath.h"
+#include "Core/BorderGameMode.h"
+#include "Buildings/Defense/BorderPillar.h"
 #include "Zombies/Data/ZombieSettings.h"
 #include "AIController.h"
 #include "Animation/AnimSequence.h"
@@ -28,13 +38,22 @@ ABorderZombie::ABorderZombie()
     GetCharacterMovement()->bEnablePhysicsInteraction = false;
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     GetMesh()->SetCollisionProfileName(TEXT("CharacterMesh"));
     GetMesh()->SetCanEverAffectNavigation(false);
+    GetCapsuleComponent()->SetCanEverAffectNavigation(false);
+    GetCharacterMovement()->bUseRVOAvoidance = true;
+    GetCharacterMovement()->AvoidanceConsiderationRadius = 350.f;
 }
 
 void ABorderZombie::BeginPlay()
 {
     Super::BeginPlay();
+    GetCharacterMovement()->SetAvoidanceEnabled(true);
+    // Weapon traces use Visibility. Pawn/CharacterMesh presets may ignore it,
+    // including overrides serialized on existing Blueprint instances.
+    SetCanBeDamaged(true);
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
     if (Settings)
     {
         Health = FMath::Max(1.f, Settings->MaxHealth);
@@ -48,18 +67,10 @@ void ABorderZombie::BeginPlay()
         CorpsePushMaxSpeed = Settings->CorpsePushMaxSpeed;
         CorpsePushBone = Settings->CorpsePushBone;
     }
-    if (!WallTarget)
-    {
-        float BestDistance = TNumericLimits<float>::Max();
-        for (TActorIterator<AActor> It(GetWorld()); It; ++It)
-        {
-            if (It->ActorHasTag(TEXT("BorderWall")))
-            {
-                const float Distance = FVector::DistSquared(GetActorLocation(), TargetPoint(*It));
-                if (Distance < BestDistance) { BestDistance = Distance; WallTarget = *It; }
-            }
-        }
-    }
+    WallTarget = nullptr;
+    NextDecisionTime = GetWorld()->GetTimeSeconds()+FMath::FRandRange(0.f,.65f);
+    LastProgressLocation = GetActorLocation();
+    LastProgressTime = GetWorld()->GetTimeSeconds();
     PlayAnimation(IdleAnimation, true);
 }
 
@@ -98,6 +109,13 @@ void ABorderZombie::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
     if (bDead) return;
+    if (const ABorderGameMode* Mode = GetWorld()->GetAuthGameMode<ABorderGameMode>())
+        if (!Mode->bIsNight || Mode->bGameOver || Mode->bTransitioning)
+        {
+            GetCharacterMovement()->StopMovementImmediately();
+            PlayAnimation(IdleAnimation,true);
+            return;
+        }
     const float Now = GetWorld()->GetTimeSeconds();
     if (bAttackPending)
     {
@@ -109,9 +127,8 @@ void ABorderZombie::Tick(float DeltaSeconds)
         }
         else return;
     }
-    AActor* Target = IsValid(WallTarget) && !WallTarget->ActorHasTag(TEXT("Dead")) ? WallTarget.Get() : nullptr;
-    APawn* Player = UGameplayStatics::GetPlayerPawn(this, 0);
-    if (CanReach(Player, DetectionRadius)) Target = Player;
+    if (Now>=NextDecisionTime || !IsValid(CurrentTarget) || CurrentTarget->ActorHasTag(TEXT("Dead"))) Think(Now);
+    AActor* Target = CurrentTarget;
     if (!Target) { PlayAnimation(IdleAnimation, true); return; }
     if (CanReach(Target, AttackReach))
     {
@@ -131,11 +148,7 @@ void ABorderZombie::Tick(float DeltaSeconds)
         return;
     }
     PlayAnimation(WalkAnimation, true);
-    FVector Direction = TargetPoint(Target) - GetActorLocation();
-    Direction.Z = 0;
-    Direction = Direction.GetSafeNormal();
-    PushCorpses(Direction, DeltaSeconds);
-    AddMovementInput(Direction);
+    FollowRoute(DeltaSeconds);
 }
 
 void ABorderZombie::PushCorpses(const FVector& Direction, float DeltaSeconds)
@@ -198,6 +211,8 @@ float ABorderZombie::TakeDamage(float Amount, const FDamageEvent& Event, AContro
     {
         bDead = true;
         Tags.AddUnique(TEXT("Dead"));
+        GetCharacterMovement()->SetAvoidanceEnabled(false);
+        GetWorld()->GetSubsystem<UBuildingTargetRegistry>()->Release(this);
         GetCharacterMovement()->DisableMovement();
         GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         GetCapsuleComponent()->SetCanEverAffectNavigation(false);
@@ -208,6 +223,7 @@ float ABorderZombie::TakeDamage(float Amount, const FDamageEvent& Event, AContro
         GetMesh()->SetSimulatePhysics(true);
         if (Controller) Controller->UnPossess();
         SetActorTickEnabled(false);
+        OnDied.Broadcast();
     }
     return Applied;
 }

@@ -8,5 +8,5 @@ class DEADEASYINC_API UWallSettings : public UBuildingSettings
 {
     GENERATED_BODY()
 public:
-    UWallSettings() { DisplayName = FText::FromString(TEXT("Wall")); }
+    UWallSettings() { DisplayName = FText::FromString(TEXT("Wall")); ZombieTargetPriority = 10; }
 };

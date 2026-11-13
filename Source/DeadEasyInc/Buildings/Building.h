@@ -30,6 +30,10 @@ public:
     EBuildingCondition Condition = EBuildingCondition::Healthy;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Building|Repair")
     bool bRepairAllowed = true;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Building|Repair")
+    float RestorationProgress = 0.f;
+    UFUNCTION(BlueprintPure, Category="Building|Repair") virtual bool CanRestoreCollision() const;
+    UFUNCTION(BlueprintPure, Category="Building|Repair") float GetRestorationTarget() const;
     UFUNCTION(BlueprintCallable, Category="Building") float Repair(float Amount);
     UFUNCTION(BlueprintPure, Category="Building") bool CanRepair() const;
     UFUNCTION(BlueprintPure, Category="Building") FText GetBuildingName() const;
@@ -37,6 +41,7 @@ public:
     UFUNCTION(BlueprintImplementableEvent, Category="Building") void OnBuildingDestroyed();
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type Reason) override;
     // Also runs when a dawn checkpoint restores health, not only on destruction.
     virtual void ApplyConditionState();
 private:

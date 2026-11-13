@@ -5,12 +5,14 @@
 #include "BorderZombie.generated.h"
 
 class UAnimSequence;
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBorderZombieDied);
 
 UCLASS()
 class DEADEASYINC_API ABorderZombie : public ACharacter
 {
     GENERATED_BODY()
 public:
+    UPROPERTY(BlueprintAssignable) FBorderZombieDied OnDied;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Settings")
     TObjectPtr<class UZombieSettings> Settings;
     ABorderZombie();
@@ -48,7 +50,23 @@ public:
     FName CorpsePushBone = TEXT("pelvis");
 protected:
     virtual void BeginPlay() override;
+    virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
+    void Think(float Now);
+    bool BuildSegment(const FVector& Start,const FVector& End,TArray<FVector>& Points) const;
+    bool PlanRoute(AActor* Goal,const FVector& Destination,TArray<FVector>& Points,class ABuilding*& Blocker) const;
+    bool InspectRoute(const TArray<FVector>& Points,class ABuilding*& Blocker) const;
+    void ChooseBuildingGoal();
+    void FollowRoute(float DeltaSeconds);
+    UPROPERTY(VisibleAnywhere, Category="Zombie|AI") TObjectPtr<AActor> CurrentObjective;
+    UPROPERTY(VisibleAnywhere, Category="Zombie|AI") TObjectPtr<AActor> CurrentTarget;
+    TArray<FVector> Route;
+    int32 Waypoint = 1;
+    int32 PlanRevision = INDEX_NONE;
+    float NextDecisionTime = 0.f;
+    float NextPathTime = 0.f;
+    float LastProgressTime = 0.f;
+    FVector LastProgressLocation;
     FVector TargetPoint(AActor* Target) const;
     bool CanReach(AActor* Target, float Range) const;
     void PlayAnimation(UAnimSequence* Animation, bool bLoop);

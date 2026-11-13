@@ -6,6 +6,8 @@ ACentralBoiler::ACentralBoiler()
 {
     Tags.AddUnique(TEXT("DefenseCore"));
     CombatHealth->MaxHealth = 3000.f;
+    // The core is never a temporary breach target, so paths should go around it.
+    GetStaticMeshComponent()->SetCanEverAffectNavigation(true);
 }
 
 void ACentralBoiler::BeginPlay()
