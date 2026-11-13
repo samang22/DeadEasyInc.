@@ -31,6 +31,8 @@ public:
     ABuilding* GetFocusedBuilding() const;
     UFUNCTION(BlueprintPure, Category="Repair")
     int32 GetWoodPerStroke() const;
+    UFUNCTION(BlueprintPure, Category="Repair")
+    int32 GetWood() const;
     UFUNCTION(BlueprintImplementableEvent, Category="Repair")
     void OnRepairStroke(ABuilding* Wall, float RestoredHealth);
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;

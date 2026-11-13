@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Player/DeadEasyIncCharacter.h"
+#include "Progression/PlayerLoadoutComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -15,6 +16,7 @@
 
 ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 {
+    Loadout = CreateDefaultSubobject<UPlayerLoadoutComponent>(TEXT("Loadout"));
     CreateDefaultSubobject<UCombatHealthComponent>(TEXT("CombatHealth"));
     WallRepair = CreateDefaultSubobject<UBuildingRepairComponent>(TEXT("WallRepair"));
 	// Set size for collision capsule
@@ -67,6 +69,7 @@ void ADeadEasyIncCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 	// Set up action bindings
 	if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(PlayerInputComponent))
 	{
+        Loadout->BindInput(EnhancedInputComponent);
 		// Jumping
         if (RepairAction)
         {
@@ -133,6 +136,7 @@ void ADeadEasyIncCharacter::DoMove(float Right, float Forward)
 
 void ADeadEasyIncCharacter::DoJumpStart()
 {
+    if (GetController() && GetController()->IsMoveInputIgnored()) return;
 	// pass Jump to the character
 	Jump();
 }

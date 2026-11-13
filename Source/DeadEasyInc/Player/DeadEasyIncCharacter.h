@@ -57,6 +57,8 @@ protected:
 	
 public:
 	ADeadEasyIncCharacter();
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Loadout")
+    TObjectPtr<class UPlayerLoadoutComponent> Loadout;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Settings")
     TObjectPtr<class UPlayerSettings> Settings;
     virtual void BeginPlay() override;
