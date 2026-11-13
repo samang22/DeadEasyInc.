@@ -10,9 +10,9 @@ class DEADEASYINC_API UBorderRulesSettings : public UDataAsset
     GENERATED_BODY()
 public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Settings", meta=(ClampMin="1"))
-    float DayDuration = 180.f;
+    float TransitionDuration = 5.f;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Settings", meta=(ClampMin="1"))
-    float NightDuration = 120.f;
+    float DawnDelay = 2.f;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Settings", meta=(ClampMin="0.1"))
     float RetryDelay = 2.f;
 };

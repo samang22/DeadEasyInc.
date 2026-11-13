@@ -13,9 +13,12 @@ public class DeadEasyInc : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"PhysicsCore",
+            "LevelSequence",
+            "MovieScene",
 			"InputCore",
 			"EnhancedInput",
 			"AIModule",
+            "NavigationSystem",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
 			"UMG",
@@ -23,6 +26,7 @@ public class DeadEasyInc : ModuleRules
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
+        if (Target.bBuildEditor) PrivateDependencyModuleNames.Add("UnrealEd");
 
 		PublicIncludePaths.AddRange(new string[] {
 			"DeadEasyInc",
