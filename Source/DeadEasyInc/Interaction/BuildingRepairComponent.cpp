@@ -1,5 +1,6 @@
 #include "Interaction/BuildingRepairComponent.h"
 #include "Progression/PlayerLoadoutComponent.h"
+#include "Scavenging/CorpseHandlingComponent.h"
 #include "Interaction/Data/RepairSettings.h"
 #include "Buildings/Building.h"
 #include "Shared/Health/CombatHealthComponent.h"
@@ -52,6 +53,8 @@ void UBuildingRepairComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
     UPlayerLoadoutComponent* Loadout = GetOwner()->FindComponentByClass<UPlayerLoadoutComponent>();
+    const auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>();
+    if (Work && (!Work->bActive || Work->Tool!=EWorkTool::Repair)) return;
     if (!bRepairHeld || GetWood() < GetWoodPerStroke() || GetOwner()->ActorHasTag(TEXT("Dead")) || (Loadout && Loadout->bMenuOpen)) return;
     const float Now = GetWorld()->GetTimeSeconds();
     if (Now < NextStrokeTime) return;

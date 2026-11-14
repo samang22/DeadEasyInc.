@@ -13,6 +13,11 @@ class DEADEASYINC_API ACentralBoiler : public ABuilding
     GENERATED_BODY()
 public:
     ACentralBoiler();
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly) float Fuel=100.f;
+    float Capacity() const;
+    float Efficiency() const;
+    float AddFuel(float Amount);
+    virtual void Tick(float DeltaSeconds) override;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Boiler")
     bool bDestroyed = false;
     UFUNCTION(BlueprintImplementableEvent, Category="Boiler")

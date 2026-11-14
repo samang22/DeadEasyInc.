@@ -4,17 +4,29 @@
 #include "Components/StaticMeshComponent.h"
 #include "Zombies/AI/BuildingTargetRegistry.h"
 #include "Engine/World.h"
+#include "Components/BoxComponent.h"
 
 ABuilding::ABuilding()
 {
     CombatHealth = CreateDefaultSubobject<UCombatHealthComponent>(TEXT("CombatHealth"));
     GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
     GetStaticMeshComponent()->SetCanEverAffectNavigation(false);
+    TierTwoVisual=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TierTwoVisual"));
+    TierThreeVisual=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("TierThreeVisual"));
+    for (auto* Visual : {TierTwoVisual.Get(),TierThreeVisual.Get()})
+    { Visual->SetupAttachment(GetStaticMeshComponent());Visual->SetCollisionEnabled(ECollisionEnabled::NoCollision);Visual->SetCanEverAffectNavigation(false);Visual->SetVisibility(false); }
+    BuildingRepairAnchor=CreateDefaultSubobject<UBoxComponent>(TEXT("BuildingRepairAnchor"));
+    BuildingRepairAnchor->SetupAttachment(GetStaticMeshComponent());BuildingRepairAnchor->SetCanEverAffectNavigation(false);
+    BuildingRepairAnchor->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    BuildingRepairAnchor->SetCollisionResponseToAllChannels(ECR_Ignore);
+    BuildingRepairAnchor->SetCollisionResponseToChannel(ECC_GameTraceChannel2,ECR_Block);
 }
 
 void ABuilding::BeginPlay()
 {
     Super::BeginPlay();
+    FVector Min,Max;GetStaticMeshComponent()->GetLocalBounds(Min,Max);
+    BuildingRepairAnchor->SetRelativeLocation((Min+Max)*.5f);BuildingRepairAnchor->SetBoxExtent((Max-Min)*.5f+FVector(1));
     if (Settings)
     {
         CombatHealth->MaxHealth = FMath::Max(1.f, Settings->MaxHealth);
@@ -23,6 +35,7 @@ void ABuilding::BeginPlay()
     CombatHealth->OnHealthChanged.AddDynamic(this, &ABuilding::UpdateCondition);
     CombatHealth->OnDepleted.AddDynamic(this, &ABuilding::HandleBuildingDestroyed);
     UpdateCondition(CombatHealth->Health, CombatHealth->MaxHealth);
+    RestoreUpgrade(UpgradeLevel);
     GetWorld()->GetSubsystem<UBuildingTargetRegistry>()->Register(this);
 }
 
@@ -46,12 +59,15 @@ void ABuilding::UpdateCondition(float Health, float MaxHealth)
     if ((NewCondition==EBuildingCondition::Destroyed)!=(Condition==EBuildingCondition::Destroyed))
         GetWorld()->GetSubsystem<UBuildingTargetRegistry>()->GeometryChanged();
     Condition = NewCondition;
+    TierTwoVisual->SetVisibility(UpgradeLevel>=2 && Condition!=EBuildingCondition::Destroyed);
+    TierThreeVisual->SetVisibility(UpgradeLevel>=3 && Condition!=EBuildingCondition::Destroyed);
     ApplyConditionState();
     if (bChanged) OnConditionChanged(Condition);
 }
 
 void ABuilding::ApplyConditionState()
 {
+    BuildingRepairAnchor->SetCollisionEnabled(Condition==EBuildingCondition::Destroyed ? ECollisionEnabled::QueryOnly : ECollisionEnabled::NoCollision);
     GetStaticMeshComponent()->SetCollisionEnabled(Condition==EBuildingCondition::Destroyed ? ECollisionEnabled::NoCollision : ECollisionEnabled::QueryAndPhysics);
 }
 

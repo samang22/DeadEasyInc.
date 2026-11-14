@@ -16,6 +16,14 @@ class DEADEASYINC_API ABuilding : public AStaticMeshActor
     GENERATED_BODY()
 public:
     ABuilding();
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Upgrades") TObjectPtr<class UStaticMeshComponent> TierTwoVisual;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Upgrades") TObjectPtr<class UStaticMeshComponent> TierThreeVisual;
+    UPROPERTY(VisibleAnywhere) TObjectPtr<class UBoxComponent> BuildingRepairAnchor;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Upgrades") int32 UpgradeLevel=1;
+    UFUNCTION(BlueprintCallable) bool Upgrade(class UPlayerLoadoutComponent* Player);
+    UFUNCTION(BlueprintPure) FString UpgradeStatus(class UPlayerLoadoutComponent* Player) const;
+    UFUNCTION(BlueprintImplementableEvent) void OnUpgradeApplied(int32 Level);
+    void RestoreUpgrade(int32 Level);
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Building")
     TObjectPtr<UBuildingSettings> Settings;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Building")

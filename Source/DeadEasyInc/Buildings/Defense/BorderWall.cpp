@@ -50,6 +50,7 @@ bool ABorderWall::CanRestoreCollision() const
     FCollisionObjectQueryParams Objects;
     Objects.AddObjectTypesToQuery(ECC_Pawn);
     Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+    Objects.AddObjectTypesToQuery(ECC_GameTraceChannel3);
     Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
     FCollisionQueryParams Params(SCENE_QUERY_STAT(WallRestoration),false,this);
     TArray<FOverlapResult> Overlaps;
