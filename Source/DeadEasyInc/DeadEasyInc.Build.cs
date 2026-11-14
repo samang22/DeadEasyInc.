@@ -26,7 +26,7 @@ public class DeadEasyInc : ModuleRules
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] { });
-        if (Target.bBuildEditor) PrivateDependencyModuleNames.Add("UnrealEd");
+        if (Target.bBuildEditor) PrivateDependencyModuleNames.AddRange(new string[] { "UnrealEd", "MeshDescription" });
 
 		PublicIncludePaths.AddRange(new string[] {
 			"DeadEasyInc",
