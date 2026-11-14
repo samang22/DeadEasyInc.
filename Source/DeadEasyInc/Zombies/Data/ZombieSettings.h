@@ -9,6 +9,8 @@ class DEADEASYINC_API UZombieSettings : public UDataAsset
 {
     GENERATED_BODY()
 public:
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Combat") TArray<FName> HeadshotBones={TEXT("head")};
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Corpse") TArray<FName> SolidCorpseBones={TEXT("pelvis"),TEXT("spine_01"),TEXT("spine_02"),TEXT("spine_03"),TEXT("spine_04"),TEXT("spine_05")};
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AI", meta=(ClampMin="0.2")) float DecisionInterval = .65f;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AI", meta=(ClampMin="1")) float PathRefreshInterval = 2.5f;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="AI", meta=(ClampMin="1",ClampMax="8")) int32 PortalSearchCount = 4;

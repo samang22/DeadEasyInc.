@@ -24,6 +24,10 @@ struct FBorderCheckpointActor
     UPROPERTY() bool bHasLoadout = false;
     UPROPERTY() FLoadoutState LoadoutState;
     UPROPERTY() float RestorationProgress = 0.f;
+    UPROPERTY() int32 UpgradeLevel=1;
+    UPROPERTY() float Fuel=0.f;
+    UPROPERTY() int32 TransportSlot=INDEX_NONE;
+    UPROPERTY() FName TransportCart;
 };
 
 UCLASS()

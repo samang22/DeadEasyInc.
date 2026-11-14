@@ -18,6 +18,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "TimerManager.h"
+#include "Scavenging/CorpseHandlingComponent.h"
+#include "Scavenging/Handcart.h"
 
 void ABorderGameMode::BeginPlay()
 {
@@ -31,7 +33,13 @@ void ABorderGameMode::BeginPlay()
     for (TActorIterator<ADayNightDirector> It(GetWorld()); It; ++It) { Director = *It; break; }
     if (Director) Director->OnTransitionFinished.AddDynamic(this,&ABorderGameMode::FinishNightTransition);
     // The player pawn is spawned after the GameMode starts play.
-    GetWorldTimerManager().SetTimerForNextTick(this, &ABorderGameMode::StartDay);
+    GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
+    {
+        // Disk restoration belongs only to initial startup, never a normal dawn transition.
+        if (APawn* Player = UGameplayStatics::GetPlayerPawn(this,0))
+            if (UPlayerLoadoutComponent* Loadout = Player->FindComponentByClass<UPlayerLoadoutComponent>()) Loadout->LoadDawn(DayNumber);
+        StartDay();
+    }));
 }
 
 void ABorderGameMode::EndPlay(const EEndPlayReason::Type Reason)
@@ -42,7 +50,7 @@ void ABorderGameMode::EndPlay(const EEndPlayReason::Type Reason)
 
 bool ABorderGameMode::IsCheckpointActor(AActor* Actor) const
 {
-    return Actor == UGameplayStatics::GetPlayerPawn(this, 0) || Actor->IsA<ABuilding>() || Actor->IsA<ABorderZombie>();
+    return Actor == UGameplayStatics::GetPlayerPawn(this, 0) || Actor->IsA<ABuilding>() || Actor->IsA<ABorderZombie>() || Actor->IsA<AHandcart>();
 }
 
 void ABorderGameMode::BindDefeatConditions()
@@ -76,10 +84,40 @@ void ABorderGameMode::ApplyPhase()
 void ABorderGameMode::StartDay()
 {
     if (bGameOver || bTransitioning) return;
-    if (Dawn.IsEmpty())
-        if (APawn* Player = UGameplayStatics::GetPlayerPawn(this,0))
-            if (UPlayerLoadoutComponent* Loadout = Player->FindComponentByClass<UPlayerLoadoutComponent>()) Loadout->LoadDawn(DayNumber);
+#if !UE_BUILD_SHIPPING
+    TArray<TWeakObjectPtr<ABorderZombie>> Corpses;
+    for (TActorIterator<ABorderZombie> It(GetWorld()); It; ++It)
+        if (It->bDead) Corpses.Add(*It);
+    auto TraceCorpses = [Corpses](const TCHAR* Stage)
+    {
+        int32 Present=0, Hidden=0, Simulating=0;
+        for (const auto& Entry : Corpses)
+            if (const auto* Corpse=Entry.Get(); IsValid(Corpse) && !Corpse->IsActorBeingDestroyed())
+            {
+                ++Present;
+                const auto* Mesh=Corpse->GetMesh();
+                Hidden += Corpse->IsHidden() || !Mesh->IsVisible() || Mesh->bHiddenInGame;
+                Simulating += Mesh->IsSimulatingPhysics();
+            }
+        UE_LOG(LogTemp, Warning, TEXT("DawnCorpse [%s] tracked=%d present=%d hidden=%d simulating=%d"),
+            Stage, Corpses.Num(), Present, Hidden, Simulating);
+        if (!Corpses.IsEmpty())
+            if (const auto* Corpse=Corpses[0].Get(); IsValid(Corpse))
+            {
+                const auto* Mesh=Corpse->GetMesh();
+                const auto* Body=Mesh->GetBodyInstance(Corpse->CorpsePushBone);
+                UE_LOG(LogTemp, Warning, TEXT("DawnCorpse [%s] sample=%s root=%s body=%s bounds=%s"),
+                    Stage, *Corpse->GetName(), *Corpse->GetActorLocation().ToString(),
+                    *(Body ? Body->GetUnrealWorldTransform().GetLocation() : Mesh->GetComponentLocation()).ToString(),
+                    *Mesh->Bounds.Origin.ToString());
+            }
+    };
+    TraceCorpses(TEXT("before"));
+#endif
     if (bIsNight) ++DayNumber;
+    // Keep all unprocessed ragdolls across dawn, including any with an external cleanup timer.
+    for (TActorIterator<ABorderZombie> It(GetWorld()); It; ++It)
+        if (It->bDead) It->SetLifeSpan(0.f);
     bIsNight = false;
     bWaveRegistered = false;
     RemainingZombies = 0;
@@ -88,9 +126,23 @@ void ABorderGameMode::StartDay()
     FinishedSources.Reset();
     BindDefeatConditions();
     ApplyPhase();
+#if !UE_BUILD_SHIPPING
+    TraceCorpses(TEXT("after phase"));
+#endif
     CaptureDawn();
+#if !UE_BUILD_SHIPPING
+    TraceCorpses(TEXT("after capture"));
+#endif
     if (APawn* Player = UGameplayStatics::GetPlayerPawn(this,0))
         if (UPlayerLoadoutComponent* Loadout = Player->FindComponentByClass<UPlayerLoadoutComponent>()) Loadout->SaveDawn(DayNumber);
+#if !UE_BUILD_SHIPPING
+    TraceCorpses(TEXT("after save"));
+    FTimerHandle ProbeTimer;
+    GetWorldTimerManager().SetTimer(ProbeTimer, FTimerDelegate::CreateWeakLambda(this, [TraceCorpses]()
+    {
+        TraceCorpses(TEXT("one second after dawn"));
+    }), 1.f, false);
+#endif
 }
 
 void ABorderGameMode::StartNight()
@@ -195,19 +247,22 @@ void ABorderGameMode::CheckNightCompletion()
 
 void ABorderGameMode::CaptureDawn()
 {
+    if (auto* Pawn=UGameplayStatics::GetPlayerPawn(this,0))
+        if (auto* Work=Pawn->FindComponentByClass<UCorpseHandlingComponent>()) Work->Release();
     Dawn.Reset();
     CheckpointDay = DayNumber;
     if (APlayerController* Player = UGameplayStatics::GetPlayerController(this, 0)) DawnView = Player->GetControlRotation();
     for (TActorIterator<AActor> It(GetWorld()); It; ++It)
     {
         AActor* Actor = *It;
-        if (!IsCheckpointActor(Actor)) continue;
+        if (!IsCheckpointActor(Actor) || Actor->IsActorBeingDestroyed()) continue;
         FBorderCheckpointActor& Record = Dawn.AddDefaulted_GetRef();
         Record.Original = Actor;
         Record.ActorClass = Actor->GetClass();
         Record.Transform = Actor->GetActorTransform();
         Record.Tags = Actor->Tags;
-        if (ABuilding* Building = Cast<ABuilding>(Actor)) Record.RestorationProgress = Building->RestorationProgress;
+        if (ABuilding* Building = Cast<ABuilding>(Actor)) { Record.RestorationProgress = Building->RestorationProgress;Record.UpgradeLevel=Building->UpgradeLevel; }
+        if (auto* Boiler=Cast<ACentralBoiler>(Actor)) Record.Fuel=Boiler->Fuel;
         if (UPlayerLoadoutComponent* Loadout = Actor->FindComponentByClass<UPlayerLoadoutComponent>())
         {
             Record.bHasLoadout = true;
@@ -223,7 +278,7 @@ void ABorderGameMode::CaptureDawn()
         {
             Record.Health = Zombie->Health;
             Record.bCorpse = Zombie->bDead;
-            Record.WallTarget = Zombie->WallTarget;
+            Record.WallTarget = Zombie->WallTarget;Record.TransportSlot=Zombie->TransportSlot;Record.TransportCart=Zombie->Carrier.IsValid() ? Zombie->Carrier->GetFName() : NAME_None;
             if (Zombie->bDead)
             {
                 TArray<FName> Bones;
@@ -266,6 +321,8 @@ void ABorderGameMode::RetryFromDawn()
 {
     if (!bGameOver || Dawn.IsEmpty()) return;
     GetWorldTimerManager().ClearTimer(RetryTimer);
+    if (auto* Pawn=UGameplayStatics::GetPlayerPawn(this,0))
+        if (auto* Work=Pawn->FindComponentByClass<UCorpseHandlingComponent>()) { Work->Release();Work->ReleaseCargo(); }
     // All zombies are recreated so death, attack wind-up and physics state are reset.
     TArray<AActor*> ToRemove;
     for (TActorIterator<AActor> It(GetWorld()); It; ++It)
@@ -292,7 +349,7 @@ void ABorderGameMode::RetryFromDawn()
             if (Root->Mobility == EComponentMobility::Movable && !Actor->GetActorTransform().Equals(Record.Transform))
                 Actor->SetActorTransform(Record.Transform, false, nullptr, ETeleportType::TeleportPhysics);
         Actor->Tags = Record.Tags;
-        if (ABuilding* Building = Cast<ABuilding>(Actor)) Building->RestorationProgress = Record.RestorationProgress;
+        if (ABuilding* Building = Cast<ABuilding>(Actor)) { Building->RestorationProgress = Record.RestorationProgress;Building->RestoreUpgrade(Record.UpgradeLevel); }
         if (Record.bHasLoadout)
             if (UPlayerLoadoutComponent* Loadout = Actor->FindComponentByClass<UPlayerLoadoutComponent>()) Loadout->RestoreState(Record.LoadoutState);
         if (UCombatHealthComponent* Health = Actor->FindComponentByClass<UCombatHealthComponent>())
@@ -306,10 +363,10 @@ void ABorderGameMode::RetryFromDawn()
             Repair->StopRepair();
             Repair->Wood = Record.Wood;
         }
-        if (ACentralBoiler* Boiler = Cast<ACentralBoiler>(Actor)) Boiler->bDestroyed = Record.Health <= 0.f;
+        if (ACentralBoiler* Boiler = Cast<ACentralBoiler>(Actor)) { Boiler->bDestroyed = Record.Health <= 0.f;Boiler->Fuel=Record.Fuel; }
         if (ABorderZombie* Zombie = Cast<ABorderZombie>(Actor))
         {
-            Zombie->WallTarget = Record.WallTarget;
+            Zombie->WallTarget = Record.WallTarget;Zombie->TransportSlot=Record.TransportSlot;
             Zombie->Health = Record.bCorpse ? 1.f : Record.Health;
             if (Record.bCorpse)
             {
@@ -327,6 +384,7 @@ void ABorderGameMode::RetryFromDawn()
             Character->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
         }
     }
+    for (TActorIterator<AHandcart> It(GetWorld());It;++It) It->RefreshCargo();
     if (APlayerController* Player = UGameplayStatics::GetPlayerController(this, 0))
     {
         Player->ResetIgnoreMoveInput();

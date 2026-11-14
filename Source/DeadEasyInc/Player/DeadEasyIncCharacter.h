@@ -57,6 +57,7 @@ protected:
 	
 public:
 	ADeadEasyIncCharacter();
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UCorpseHandlingComponent> CorpseHandling;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Loadout")
     TObjectPtr<class UPlayerLoadoutComponent> Loadout;
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Settings")

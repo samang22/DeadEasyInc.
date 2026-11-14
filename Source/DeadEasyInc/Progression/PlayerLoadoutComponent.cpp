@@ -11,6 +11,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
+#include "Scavenging/CorpseHandlingComponent.h"
+#include "Buildings/Data/BuildingSettings.h"
 
 UPlayerLoadoutComponent::UPlayerLoadoutComponent() { PrimaryComponentTick.bCanEverTick = true; }
 
@@ -20,6 +22,7 @@ void UPlayerLoadoutComponent::BeginPlay()
     if (!Settings) return;
     State.Resources = Settings->StartingResources;
     State.OwnedWeapons = Settings->StartingWeapons;
+    State.OwnedTools = Settings->StartingTools;
     for (FName Id : State.OwnedWeapons)
         if (UWeaponDefinition* Weapon = FindWeapon(Id))
         {
@@ -44,6 +47,9 @@ void UPlayerLoadoutComponent::BindInput(UEnhancedInputComponent* Input)
         Input->BindAction(FireAction, ETriggerEvent::Completed, this, &UPlayerLoadoutComponent::StopFire);
         Input->BindAction(FireAction, ETriggerEvent::Canceled, this, &UPlayerLoadoutComponent::StopFire);
     }
+    if (WorkAction) Input->BindAction(WorkAction,ETriggerEvent::Started,this,&UPlayerLoadoutComponent::SelectWork);
+    if (StoreCorpseAction) Input->BindAction(StoreCorpseAction,ETriggerEvent::Started,this,&UPlayerLoadoutComponent::StoreCorpse);
+    if (UpgradeAction) Input->BindAction(UpgradeAction,ETriggerEvent::Started,this,&UPlayerLoadoutComponent::OpenUpgrade);
     if (ReloadAction) Input->BindAction(ReloadAction, ETriggerEvent::Started, this, &UPlayerLoadoutComponent::Reload);
     if (RangedAction) Input->BindAction(RangedAction, ETriggerEvent::Started, this, &UPlayerLoadoutComponent::SelectRanged);
     if (MeleeAction) Input->BindAction(MeleeAction, ETriggerEvent::Started, this, &UPlayerLoadoutComponent::SelectMelee);
@@ -60,6 +66,7 @@ UWeaponDefinition* UPlayerLoadoutComponent::FindWeapon(FName Id) const
 
 UWeaponDefinition* UPlayerLoadoutComponent::GetActiveWeapon() const
 {
+    if (const auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) if (Work->bActive || Work->IsPushing()) return nullptr;
     const FName Id = State.ActiveCategory == EWeaponCategory::Ranged ? State.Ranged : State.Melee;
     return State.OwnedWeapons.Contains(Id) ? FindWeapon(Id) : nullptr;
 }
@@ -95,8 +102,10 @@ void UPlayerLoadoutComponent::Pay(const TMap<FName,int32>& Cost)
 FString UPlayerLoadoutComponent::ResearchStatus(const UResearchDefinition* Definition) const
 {
     if (!Definition) return TEXT("Unavailable");
+    if (!Definition->bImplemented) return TEXT("Planned - coming later");
     if (State.Research.Contains(Definition->Id)) return TEXT("Researched");
     for (FName Id : Definition->Prerequisites) if (!State.Research.Contains(Id)) return TEXT("Requires prior research");
+    if (GetOpenStation() && GetOpenStation()->UpgradeLevel<Definition->RequiredResearchLevel) return TEXT("Upgrade research desk");
     return CanAfford(Definition->Cost) ? TEXT("Research") : TEXT("Not enough materials");
 }
 FString UPlayerLoadoutComponent::CraftStatus(const UWeaponDefinition* Weapon) const
@@ -104,7 +113,8 @@ FString UPlayerLoadoutComponent::CraftStatus(const UWeaponDefinition* Weapon) co
     if (!Weapon || !Weapon->WeaponClass) return TEXT("Unavailable");
     if (State.OwnedWeapons.Contains(Weapon->Id)) return TEXT("Owned");
     if (!Weapon->RequiredResearch.IsNone() && !State.Research.Contains(Weapon->RequiredResearch)) return TEXT("Research required");
-    return CanAfford(Weapon->CraftCost) ? TEXT("Craft") : TEXT("Not enough materials");
+    if (GetOpenStation() && GetOpenStation()->UpgradeLevel<Weapon->RequiredWorkbenchLevel) return TEXT("Upgrade workbench");
+    return CanAfford(CraftCost(Weapon->CraftCost)) ? TEXT("Craft") : TEXT("Not enough materials");
 }
 
 bool UPlayerLoadoutComponent::CanUseStation(bool bResearch) const
@@ -122,10 +132,11 @@ bool UPlayerLoadoutComponent::Research(FName Id)
         if (Definition && Definition->Id == Id)
         {
             Message = ResearchStatus(Definition);
-            if (Message != TEXT("Research")) return false;
+            if (Message != TEXT("Research")) { const FString Missing=Message==TEXT("Not enough materials") ? MissingMaterials(Definition->Cost) : FString();Notify(Missing.IsEmpty() ? Message : Missing,true);return false; }
+            if (!QueueTransaction(TEXT("Research"),Id,Definition->DisplayName.ToString(),Definition->Cost)) return false;
             Pay(Definition->Cost);
             State.Research.AddUnique(Id);
-            Message = TEXT("Research unlocked. Committed at next dawn.");
+            Notify(TEXT("연구 완료! 다음 낮 시작에 저장됩니다."));
             return true;
         }
     return false;
@@ -135,12 +146,13 @@ bool UPlayerLoadoutComponent::Craft(FName Id)
     UWeaponDefinition* Weapon = FindWeapon(Id);
     if (!CanUseStation(false) || !Weapon) return false;
     Message = CraftStatus(Weapon);
-    if (Message != TEXT("Craft")) return false;
-    Pay(Weapon->CraftCost);
+    if (Message != TEXT("Craft")) { const FString Missing=Message==TEXT("Not enough materials") ? MissingMaterials(CraftCost(Weapon->CraftCost)) : FString();Notify(Missing.IsEmpty() ? Message : Missing,true);return false; }
+    if (!QueueTransaction(TEXT("Craft"),Id,Weapon->DisplayName.ToString(),CraftCost(Weapon->CraftCost))) return false;
+    Pay(CraftCost(Weapon->CraftCost));
     State.OwnedWeapons.AddUnique(Id);
     State.Magazines.Add(Id, FMath::Max(1, Weapon->MagazineSize));
     (Weapon->Category == EWeaponCategory::Ranged ? State.Ranged : State.Melee) = Id;
-    Message = TEXT("Weapon crafted. Committed at next dawn.");
+    Notify(TEXT("제작 완료! 다음 낮 시작에 저장됩니다."));
     return true;
 }
 
@@ -193,9 +205,11 @@ void UPlayerLoadoutComponent::Interact()
     if (!CanAct()) return;
     const ABorderGameMode* Mode = GetWorld()->GetAuthGameMode<ABorderGameMode>();
     if (Mode && Mode->bIsNight) { Message = TEXT("Stations are available during the day."); return; }
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) if (Work->Interact()) return;
     AGateSwitch* Switch = GetFocusedGateSwitch();
     AProgressionStation* Station = GetFocusedStation();
-    if (!Switch && (!Station || Station->Condition == EBuildingCondition::Destroyed)) return;
+    if (!Switch && !Station) { OpenUpgrade();return; }
+    if (!Switch && Station->Condition == EBuildingCondition::Destroyed) return;
     if (Switch && !IsValid(Switch->Gate)) { Message = TEXT("Gate switch is not connected."); return; }
     bNightConfirmationOpen = Switch != nullptr;
     NightSwitch = Switch;
@@ -219,9 +233,11 @@ void UPlayerLoadoutComponent::Interact()
 void UPlayerLoadoutComponent::CloseMenu()
 {
     if (!bMenuOpen) return;
+    CancelTransaction();
     bMenuOpen = false;
     bNightConfirmationOpen = false;
     NightSwitch.Reset();
+    UpgradeBuilding=nullptr;
     OpenStation.Reset();
     if (const APawn* Pawn = Cast<APawn>(GetOwner()))
         if (APlayerController* Player = Cast<APlayerController>(Pawn->GetController()))
@@ -235,7 +251,12 @@ void UPlayerLoadoutComponent::CloseMenu()
     Equip();
 }
 
-void UPlayerLoadoutComponent::StartFire() { if (CanAct() && !bMenuOpen) { bFireHeld = true; Fire(); } }
+void UPlayerLoadoutComponent::StartFire()
+{
+    if (!CanAct() || bMenuOpen) return;
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) if (Work->bActive) { Work->Primary();return; }
+    bFireHeld=true;Fire();
+}
 void UPlayerLoadoutComponent::StopFire() { bFireHeld = false; }
 void UPlayerLoadoutComponent::StopActions() { StopFire(); bReloading = false; CloseMenu(); }
 void UPlayerLoadoutComponent::Fire()
@@ -264,18 +285,21 @@ void UPlayerLoadoutComponent::Reload()
 void UPlayerLoadoutComponent::SelectRanged()
 {
     if (!CanAct() || bMenuOpen) return;
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) Work->SetWorkActive(false);
     State.ActiveCategory = EWeaponCategory::Ranged;
     Equip();
 }
 void UPlayerLoadoutComponent::SelectMelee()
 {
     if (!CanAct() || bMenuOpen) return;
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) Work->SetWorkActive(false);
     State.ActiveCategory = EWeaponCategory::Melee;
     Equip();
 }
 void UPlayerLoadoutComponent::Cycle(const FInputActionValue& Value)
 {
     if (!CanAct() || bMenuOpen || !Settings || FMath::IsNearlyZero(Value.Get<float>())) return;
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) if (Work->bActive) { Work->Cycle(Value.Get<float>());return; }
     TArray<FName> Choices;
     for (UWeaponDefinition* Weapon : Settings->Weapons)
         if (Weapon && Weapon->Category == State.ActiveCategory && State.OwnedWeapons.Contains(Weapon->Id)) Choices.Add(Weapon->Id);
@@ -310,6 +334,7 @@ void UPlayerLoadoutComponent::TickComponent(float DeltaSeconds, ELevelTick TickT
     if (bMenuOpen)
     {
         const bool bInvalid = bNightConfirmationOpen ? !NightSwitch.IsValid() || GetFocusedGateSwitch()!=NightSwitch.Get() :
+            UpgradeBuilding ? UpgradeBuilding!=FocusedBuilding() || UpgradeBuilding->Condition==EBuildingCondition::Destroyed :
             !OpenStation.IsValid() || OpenStation->Condition==EBuildingCondition::Destroyed || GetFocusedStation()!=OpenStation.Get();
         if (!CanAct() || bInvalid || (Mode && Mode->bIsNight)) CloseMenu();
     }
@@ -327,25 +352,32 @@ void UPlayerLoadoutComponent::RestoreState(const FLoadoutState& Saved)
 {
     StopActions();
     State = Saved;
+    if (Settings) for (FName Tool : Settings->StartingTools) State.OwnedTools.AddUnique(Tool);
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) { Work->SetWorkActive(false);Work->RefreshVisuals(); }
     for (FName Id : State.OwnedWeapons)
         if (UWeaponDefinition* Weapon = FindWeapon(Id))
             State.Magazines.FindOrAdd(Id) = FMath::Clamp(State.Magazines.FindRef(Id),0,FMath::Max(1,Weapon->MagazineSize));
-    Message.Reset();
+    Message.Reset();Notice.Reset();NoticeUntil=0.f;GainUntil=0.f;
     Equip();
 }
 bool UPlayerLoadoutComponent::LoadDawn(int32& Day)
 {
+    if (!Settings || (GetWorld()->WorldType==EWorldType::PIE && !Settings->bEnablePIESaves)) return false;
     if (!Settings || !UGameplayStatics::DoesSaveGameExist(Settings->SaveSlot,0)) return false;
     ULoadoutSave* Save = Cast<ULoadoutSave>(UGameplayStatics::LoadGameFromSlot(Settings->SaveSlot,0));
     if (!Save || Save->Version != 1 || Save->MapName != UGameplayStatics::GetCurrentLevelName(this,true)) return false;
     RestoreState(Save->State);
+    RestoreWorldSave(Save);
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) Work->RecoverLegacyCargo();
     Day = FMath::Max(1,Save->Day);
     return true;
 }
 bool UPlayerLoadoutComponent::SaveDawn(int32 Day)
 {
     if (!Settings) return false;
+    if (GetWorld()->WorldType==EWorldType::PIE && !Settings->bEnablePIESaves) return false;
     ULoadoutSave* Save = Cast<ULoadoutSave>(UGameplayStatics::CreateSaveGameObject(ULoadoutSave::StaticClass()));
+    CaptureWorldSave(Save);
     Save->State = State;
     Save->Day = Day;
     Save->MapName = UGameplayStatics::GetCurrentLevelName(this,true);

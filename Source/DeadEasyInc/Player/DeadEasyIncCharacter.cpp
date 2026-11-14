@@ -2,6 +2,7 @@
 
 #include "Player/DeadEasyIncCharacter.h"
 #include "Progression/PlayerLoadoutComponent.h"
+#include "Scavenging/CorpseHandlingComponent.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -17,6 +18,7 @@
 ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 {
     Loadout = CreateDefaultSubobject<UPlayerLoadoutComponent>(TEXT("Loadout"));
+    CorpseHandling = CreateDefaultSubobject<UCorpseHandlingComponent>(TEXT("CorpseHandling"));
     CreateDefaultSubobject<UCombatHealthComponent>(TEXT("CombatHealth"));
     WallRepair = CreateDefaultSubobject<UBuildingRepairComponent>(TEXT("WallRepair"));
 	// Set size for collision capsule

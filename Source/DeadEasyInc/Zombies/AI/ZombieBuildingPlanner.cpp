@@ -1,4 +1,5 @@
 #include "Zombies/BorderZombie.h"
+#include "Core/BorderGameMode.h"
 #include "Zombies/AI/BuildingTargetRegistry.h"
 #include "Zombies/Data/ZombieSettings.h"
 #include "Buildings/Building.h"
@@ -21,6 +22,12 @@ static float RouteLength(const TArray<FVector>& Points)
 
 void ABorderZombie::EndPlay(const EEndPlayReason::Type Reason)
 {
+    if (bDead && (Reason == EEndPlayReason::Destroyed || Reason == EEndPlayReason::RemovedFromWorld))
+    {
+        const auto* Mode = GetWorld()->GetAuthGameMode<ABorderGameMode>();
+        UE_LOG(LogTemp, Warning, TEXT("Corpse removed: %s Reason=%d Day=%d Night=%d Position=%s"),
+            *GetName(), static_cast<int32>(Reason), Mode ? Mode->DayNumber : 0, Mode && Mode->bIsNight, *GetActorLocation().ToString());
+    }
     if (UBuildingTargetRegistry* Registry=GetWorld()->GetSubsystem<UBuildingTargetRegistry>()) Registry->Release(this);
     Super::EndPlay(Reason);
 }

@@ -20,6 +20,7 @@
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 #include "PhysicsEngine/BodyInstance.h"
+#include "PhysicsEngine/PhysicsAsset.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 
@@ -39,7 +40,10 @@ ABorderZombie::ABorderZombie()
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel4,ECR_Ignore);
     GetMesh()->SetCollisionProfileName(TEXT("CharacterMesh"));
+    GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    GetMesh()->SetCollisionResponseToChannel(ECC_GameTraceChannel4,ECR_Block);
     GetMesh()->SetCanEverAffectNavigation(false);
     GetCapsuleComponent()->SetCanEverAffectNavigation(false);
     GetCharacterMovement()->bUseRVOAvoidance = true;
@@ -54,6 +58,9 @@ void ABorderZombie::BeginPlay()
     // including overrides serialized on existing Blueprint instances.
     SetCanBeDamaged(true);
     GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+    GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel4,ECR_Ignore);
+    GetMesh()->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    GetMesh()->SetCollisionResponseToChannel(ECC_GameTraceChannel4,ECR_Block);
     if (Settings)
     {
         Health = FMath::Max(1.f, Settings->MaxHealth);
@@ -108,7 +115,7 @@ void ABorderZombie::PlayAnimation(UAnimSequence* Animation, bool bLoop)
 void ABorderZombie::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
-    if (bDead) return;
+    if (bDead) { TickCorpseInfluences(DeltaSeconds);return; }
     if (const ABorderGameMode* Mode = GetWorld()->GetAuthGameMode<ABorderGameMode>())
         if (!Mode->bIsNight || Mode->bGameOver || Mode->bTransitioning)
         {
@@ -159,6 +166,7 @@ void ABorderZombie::PushCorpses(const FVector& Direction, float DeltaSeconds)
     TArray<FOverlapResult> Overlaps;
     FCollisionObjectQueryParams Objects;
     Objects.AddObjectTypesToQuery(ECC_PhysicsBody);
+    Objects.AddObjectTypesToQuery(ECC_GameTraceChannel3);
     FCollisionQueryParams Params(SCENE_QUERY_STAT(ZombieCorpsePush), false, this);
     GetWorld()->OverlapMultiByObjectType(Overlaps, GetActorLocation() + Direction * Reach,
         FQuat::Identity, Objects, FCollisionShape::MakeCapsule(Radius + Reach,
@@ -202,6 +210,30 @@ void ABorderZombie::PushCorpses(const FVector& Direction, float DeltaSeconds)
     }
 }
 
+bool ABorderZombie::IsHeadshot(const FHitResult& Hit) const
+{
+    if (bDead || Hit.GetComponent()!=GetMesh() || Hit.BoneName.IsNone()) return false;
+    FName Bone=Hit.BoneName;
+    while (!Bone.IsNone())
+    {
+        if (Settings ? Settings->HeadshotBones.Contains(Bone) : Bone==TEXT("head")) return true;
+        const FName Parent=GetMesh()->GetParentBone(Bone);
+        if (Parent==Bone) break;
+        Bone=Parent;
+    }
+    return false;
+}
+
+TArray<FName> ABorderZombie::GetHeadshotPhysicsBodies() const
+{
+    TArray<FName> Result;
+    const UPhysicsAsset* Physics=GetMesh()->GetPhysicsAsset();
+    if (!Physics) return Result;
+    const TArray<FName> Bones=Settings ? Settings->HeadshotBones : TArray<FName>{TEXT("head")};
+    for (FName Bone : Bones) if (Physics->FindBodyIndex(Bone)!=INDEX_NONE) Result.Add(Bone);
+    return Result;
+}
+
 float ABorderZombie::TakeDamage(float Amount, const FDamageEvent& Event, AController* InstigatorController, AActor* Causer)
 {
     if (bDead || Amount <= 0) return 0.f;
@@ -210,6 +242,8 @@ float ABorderZombie::TakeDamage(float Amount, const FDamageEvent& Event, AContro
     if (Health <= 0)
     {
         bDead = true;
+        // Corpses persist for daytime cleanup; only processing or checkpoint restore removes them.
+        SetLifeSpan(0.f);
         Tags.AddUnique(TEXT("Dead"));
         GetCharacterMovement()->SetAvoidanceEnabled(false);
         GetWorld()->GetSubsystem<UBuildingTargetRegistry>()->Release(this);
@@ -217,12 +251,14 @@ float ABorderZombie::TakeDamage(float Amount, const FDamageEvent& Event, AContro
         GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
         GetCapsuleComponent()->SetCanEverAffectNavigation(false);
         GetMesh()->SetCollisionProfileName(TEXT("Ragdoll"));
-        GetMesh()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+        GetMesh()->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
+        GetMesh()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);
         GetMesh()->SetCollisionResponseToChannel(ECC_PhysicsBody, ECR_Block);
         GetMesh()->CanCharacterStepUpOn = ECB_No;
         GetMesh()->SetSimulatePhysics(true);
+        ApplyCorpseCollision();
         if (Controller) Controller->UnPossess();
-        SetActorTickEnabled(false);
+        SetActorTickEnabled(true);
         OnDied.Broadcast();
     }
     return Applied;

@@ -18,6 +18,8 @@ public:
     ABorderZombie();
     virtual void Tick(float DeltaSeconds) override;
     virtual float TakeDamage(float Amount, const FDamageEvent& Event, AController* InstigatorController, AActor* Causer) override;
+    bool IsHeadshot(const FHitResult& Hit) const;
+    UFUNCTION(BlueprintPure,Category="Combat") TArray<FName> GetHeadshotPhysicsBodies() const;
 
     UPROPERTY(EditInstanceOnly, BlueprintReadWrite, Category="Zombie")
     TObjectPtr<AActor> WallTarget;
@@ -39,6 +41,12 @@ public:
     TObjectPtr<UAnimSequence> AttackAnimation;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Zombie")
     bool bDead = false;
+    TWeakObjectPtr<class AHandcart> Carrier;
+    TWeakObjectPtr<class ACorpseProcessor> ProcessingOwner;
+    TWeakObjectPtr<class UCorpseHandlingComponent> HandlingOwner;
+    int32 TransportSlot=INDEX_NONE;
+    void ApplyCorpseCollision();
+    void TickCorpseInfluences(float DeltaSeconds);
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Zombie|Corpse Pushing")
     float CorpsePushReach = 35.f;
@@ -78,4 +86,5 @@ private:
     bool bAttackPending = false;
     uint64 LastPushFrame = MAX_uint64;
     float PushForceThisFrame = 0.f;
+    float NextCorpseContactTime=0.f;
 };
