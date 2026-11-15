@@ -9,6 +9,7 @@ class DEADEASYINC_API AHandcart : public AActor
     GENERATED_BODY()
 public:
     AHandcart();
+    virtual void PostLoad() override;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UBoxComponent> Collision;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UBoxComponent> GrabTarget;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class USceneComponent> BedPivot;
@@ -26,35 +27,24 @@ public:
     UPROPERTY(EditDefaultsOnly,BlueprintReadOnly) TObjectPtr<class UScavengingSettings> Settings;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class APawn> Driver;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UCorpseCargoComponent> CargoStorage;
-    bool StartPush(APawn* Player);
-    void StopPush();
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UHandcartMovementComponent> CartMovement;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UHandcartDischargeComponent> Discharge;
+    virtual bool StartPush(APawn* Player);
+    virtual void StopPush();
     bool LoadCorpse(class ABorderZombie* Corpse,int32 Slot=INDEX_NONE);
     void DetachCorpse(class ABorderZombie* Corpse);
     void ReleaseCargo();
     int32 CargoCount() const;
     void RefreshCargo();
-    bool Dump();
-    UFUNCTION(BlueprintCallable,CallInEditor) bool SnapToGround();
+    virtual bool Dump();
+    UFUNCTION(BlueprintCallable,CallInEditor) virtual bool SnapToGround();
     virtual void Tick(float DeltaSeconds) override;
+    virtual void AdvanceDriverMovement(float DeltaSeconds);
+    virtual void UpdateWheelVisuals();
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
     void HandleCargoDetached(class ABorderZombie* Corpse);
     void HandleCargoAttached(class ABorderZombie* Corpse);
-    float NormalSpeed=500.f;
-    FVector LastWheelLocation=FVector::ZeroVector;
-    FVector FollowVelocity=FVector::ZeroVector;
-    float FollowYawRate=0.f;
-    void UpdateWheelRoll();
-    void TickDischarge(float Dt);
-    bool CanCloseTailgate() const;
-    void ResetDischarge();
-    bool bDischarging=false;
-    bool bClosingTailgate=false;
-    float TailgateAlpha=0.f;
-    float BedTipAlpha=0.f;
-    float SpillTime=0.f;
-    FQuat ClosedBedRotation=FQuat::Identity;
-    FQuat ClosedGateRotation=FQuat::Identity;
 };

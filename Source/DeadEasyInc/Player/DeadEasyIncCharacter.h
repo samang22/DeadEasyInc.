@@ -68,6 +68,7 @@ protected:
 
 	/** Called from Input Actions for movement input */
 	void MoveInput(const FInputActionValue& Value);
+    void StopVehicleMovementInput();
 
 	/** Called from Input Actions for looking input */
 	void LookInput(const FInputActionValue& Value);

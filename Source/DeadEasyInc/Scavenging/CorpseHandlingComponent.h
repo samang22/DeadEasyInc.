@@ -25,6 +25,7 @@ public:
     void RefreshVisuals();
     class AHandcart* EnsureHandcart();
     bool IsPushing() const;
+    class AElectricCart* GetMountedVehicle() const;
     class AHandcart* GetUsableHandcart() const;
     void StopPushing();
     void DetachCorpse(class ABorderZombie* Corpse);

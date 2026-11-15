@@ -16,6 +16,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Scavenging/Handcart.h"
+#include "Scavenging/ElectricCart.h"
 #include "Components/BoxComponent.h"
 #include "EngineUtils.h"
 #include "Interaction/GateSwitch.h"
@@ -114,6 +115,10 @@ AHandcart* UCorpseHandlingComponent::EnsureHandcart()
     if (Handcart) Handcart->SnapToGround();return Handcart;
 }
 bool UCorpseHandlingComponent::IsPushing() const { return IsValid(Handcart) && Handcart->Driver==GetOwner(); }
+AElectricCart* UCorpseHandlingComponent::GetMountedVehicle() const
+{
+    return IsPushing() ? Cast<AElectricCart>(Handcart) : nullptr;
+}
 void UCorpseHandlingComponent::StopPushing()
 {
     if (IsPushing()) Handcart->StopPush();
