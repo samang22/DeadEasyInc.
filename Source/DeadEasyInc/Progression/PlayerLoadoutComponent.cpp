@@ -56,6 +56,7 @@ void UPlayerLoadoutComponent::BindInput(UEnhancedInputComponent* Input)
     if (CycleAction) Input->BindAction(CycleAction, ETriggerEvent::Triggered, this, &UPlayerLoadoutComponent::Cycle);
     if (InteractAction) Input->BindAction(InteractAction, ETriggerEvent::Started, this, &UPlayerLoadoutComponent::Interact);
     if (CloseAction) Input->BindAction(CloseAction, ETriggerEvent::Started, this, &UPlayerLoadoutComponent::CloseMenu);
+
 }
 
 UWeaponDefinition* UPlayerLoadoutComponent::FindWeapon(FName Id) const

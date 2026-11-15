@@ -1,4 +1,5 @@
 #include "UI/BorderHUD.h"
+#include "Player/DeadEasyIncPlayerController.h"
 #include "Buildings/Building.h"
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Interaction/BuildingRepairComponent.h"
@@ -19,6 +20,8 @@
 void ABorderHUD::DrawHUD()
 {
     Super::DrawHUD();
+    if (auto* Player=Cast<ADeadEasyIncPlayerController>(PlayerOwner); Canvas && Player && Player->bPauseMenuOpen)
+    { DrawPauseMenu(Player);return; }
     APawn* Pawn = PlayerOwner ? PlayerOwner->GetPawn() : nullptr;
     UBuildingRepairComponent* Repair = Pawn ? Pawn->FindComponentByClass<UBuildingRepairComponent>() : nullptr;
     if (!Canvas || !Repair) return;
@@ -57,7 +60,6 @@ void ABorderHUD::DrawHUD()
     }
     DrawLine(X - 4, Y, X + 4, Y, FLinearColor::White);
     DrawLine(X, Y - 4, X, Y + 4, FLinearColor::White);
-    DrawText(FString::Printf(TEXT("Wood: %d"), Repair->GetWood()), FLinearColor::White, 30, Canvas->SizeY - 50);
     ABuilding* Wall = Repair->GetFocusedBuilding();
     if (!Wall) return;
     DrawText(FString::Printf(TEXT("%s: %.0f / %.0f"), *Wall->GetBuildingName().ToString(), Wall->CombatHealth->Health, Wall->CombatHealth->MaxHealth),
@@ -87,13 +89,20 @@ static FString ResourceCostText(const TMap<FName,int32>& Cost)
 
 void ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout)
 {
-    DrawText(FString::Printf(TEXT("Iron: %d"),Loadout->GetResource(TEXT("Iron"))),FLinearColor::White,30,Canvas->SizeY-75);
+    auto DrawRight=[&](const FString& Text,const FLinearColor& Color,float Y)
+    {
+        float Width=0.f,Height=0.f;GetTextSize(Text,Width,Height);
+        DrawText(Text,Color,FMath::Max(30.f,Canvas->SizeX-30.f-Width),Y);
+    };
+    DrawRight(FString::Printf(TEXT("Wood: %d"),Loadout->GetResource(TEXT("Wood"))),FLinearColor::White,30.f);
+    DrawRight(FString::Printf(TEXT("Iron: %d"),Loadout->GetResource(TEXT("Iron"))),FLinearColor::White,52.f);
+    DrawRight(FString::Printf(TEXT("Fuel: %d"),Loadout->GetResource(TEXT("Fuel"))),FLinearColor(.9f,.7f,.3f),74.f);
     DrawText(TEXT("1 Guns   2 Melee   3 Work   Wheel Select   LMB Use   R Reload   F Interact   U Upgrade"),FLinearColor::White,30,Canvas->SizeY-25);
-    if (const auto* Work=Loadout->GetOwner()->FindComponentByClass<UCorpseHandlingComponent>())
-        DrawText(Work->Hint(),FLinearColor(.65f,.85f,1.f),30,Canvas->SizeY-100);
+    const auto* EquipmentWork=Loadout->GetOwner()->FindComponentByClass<UCorpseHandlingComponent>();
+    if (EquipmentWork) DrawRight(EquipmentWork->Hint(),FLinearColor(.65f,.85f,1.f),Canvas->SizeY-85.f);
     for (TActorIterator<ACentralBoiler> It(GetWorld());It;++It)
     {
-        DrawText(FString::Printf(TEXT("Boiler L%d | Fuel %.0f / %.0f | Reserve %d %s"),It->UpgradeLevel,It->Fuel,It->Capacity(),Loadout->GetResource(TEXT("Fuel")),It->Fuel<=0 ? TEXT("[COLD - losing health at night]") : TEXT("")),It->Fuel<=0 ? FLinearColor::Red : FLinearColor(.9f,.7f,.3f),30,115);
+        DrawRight(FString::Printf(TEXT("Boiler L%d | Fuel %.0f / %.0f %s"),It->UpgradeLevel,It->Fuel,It->Capacity(),It->Fuel<=0 ? TEXT("[COLD - losing health at night]") : TEXT("")),It->Fuel<=0 ? FLinearColor::Red : FLinearColor(.9f,.7f,.3f),96.f);
         break;
     }
     if (const auto* Health=Loadout->GetOwner()->FindComponentByClass<UCombatHealthComponent>())
@@ -102,7 +111,9 @@ void ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout)
     FString WeaponText = Weapon ? Weapon->DisplayName.ToString() : TEXT("No weapon in this category");
     if (Weapon && Weapon->Category == EWeaponCategory::Ranged)
         WeaponText += Loadout->bReloading ? TEXT("  [Reloading]") : FString::Printf(TEXT("  %d / %d | Reserve: unlimited"),Loadout->State.Magazines.FindRef(Weapon->Id),Weapon->MagazineSize);
-    DrawText(WeaponText,FLinearColor::White,30,65);
+    if (EquipmentWork && EquipmentWork->bActive) WeaponText=EquipmentWork->Tool==EWorkTool::Repair ? TEXT("수리 도구") : TEXT("시체 운반 도구");
+    else if (EquipmentWork && EquipmentWork->IsPushing()) WeaponText=TEXT("운반 장비 사용 중");
+    DrawRight(WeaponText,FLinearColor::White,Canvas->SizeY-115.f);
     if (!Loadout->bMenuOpen)
         for (TActorIterator<ACorpseProcessor> It(GetWorld());It;++It)
         {
@@ -156,13 +167,15 @@ void ABorderHUD::DrawStationMenu(UPlayerLoadoutComponent* Loadout)
         if (!Research && !Weapon && !Tool) continue;
         const FString Status=bResearch ? Loadout->ResearchStatus(Research) : Tool ? Loadout->ToolStatus(Tool) : Loadout->CraftStatus(Weapon);
         const bool bAvailable=Status==TEXT("Research") || Status==TEXT("Craft");
+        const bool bOwned=!bResearch && Status==TEXT("Owned");
         const float RowY=Y+60+Index*RowHeight;
-        DrawRect(bAvailable ? FLinearColor(.08f,.22f,.18f) : FLinearColor(.09f,.10f,.12f),X,RowY,Width,RowHeight-3);
-        DrawText((bResearch ? Research->DisplayName : Tool ? Tool->DisplayName : Weapon->DisplayName).ToString()+TEXT("  -  ")+Status,
-            bAvailable ? FLinearColor(.5f,1.f,.7f) : FLinearColor(.65f,.65f,.65f),X+10,RowY+4);
-        DrawText(ResourceCostText(bResearch ? Research->Cost : Loadout->CraftCost(Tool ? Tool->Cost : Weapon->CraftCost)),FLinearColor(.8f,.8f,.8f),X+10,RowY+23);
+        DrawRect(bOwned ? FLinearColor(.06f,.14f,.22f) : bAvailable ? FLinearColor(.08f,.22f,.18f) : FLinearColor(.09f,.10f,.12f),X,RowY,Width,RowHeight-3);
+        DrawText((bResearch ? Research->DisplayName : Tool ? Tool->DisplayName : Weapon->DisplayName).ToString()+TEXT("  -  ")+(bOwned ? TEXT("제작 완료 · 영구 보유") : Status),
+            bOwned ? FLinearColor(.55f,.8f,1.f) : bAvailable ? FLinearColor(.5f,1.f,.7f) : FLinearColor(.65f,.65f,.65f),X+10,RowY+4);
+        if (bOwned) DrawText(TEXT("추가 제작 필요 없음"),FLinearColor(.55f,.7f,.85f),X+10,RowY+23);
+        else DrawText(ResourceCostText(bResearch ? Research->Cost : Loadout->CraftCost(Tool ? Tool->Cost : Weapon->CraftCost)),FLinearColor(.8f,.8f,.8f),X+10,RowY+23);
         const FString Name=(bResearch ? TEXT("Research.") : Tool ? TEXT("Tool.") : TEXT("Craft."))+(bResearch ? Research->Id : Tool ? Tool->Id : Weapon->Id).ToString();
-        AddHitBox(FVector2D(X,RowY),FVector2D(Width,RowHeight-3),FName(*Name),true);
+        if (!bOwned) AddHitBox(FVector2D(X,RowY),FVector2D(Width,RowHeight-3),FName(*Name),true);
     }
     const float FooterY=Y+60+Count*RowHeight;
     DrawText(TEXT("Saved at next dawn. Defeat rolls back today's changes."),FLinearColor(.9f,.8f,.4f),X,FooterY+3);
@@ -172,6 +185,17 @@ void ABorderHUD::DrawStationMenu(UPlayerLoadoutComponent* Loadout)
 
 void ABorderHUD::NotifyHitBoxClick(FName BoxName)
 {
+    if (auto* Player=Cast<ADeadEasyIncPlayerController>(PlayerOwner); Player && Player->bPauseMenuOpen)
+    {
+        if (BoxName==TEXT("Pause.Resume")) Player->ResumeGame();
+        else if (BoxName==TEXT("Pause.VolumeDown")) Player->AdjustVolume(-.1f);
+        else if (BoxName==TEXT("Pause.VolumeUp")) Player->AdjustVolume(.1f);
+        else if (BoxName==TEXT("Pause.SensitivityDown")) Player->AdjustSensitivity(-.1f);
+        else if (BoxName==TEXT("Pause.SensitivityUp")) Player->AdjustSensitivity(.1f);
+        else if (BoxName==TEXT("Pause.Quit")) Player->QuitGame();
+        return;
+    }
+
     Super::NotifyHitBoxClick(BoxName);
     APawn* Pawn=PlayerOwner ? PlayerOwner->GetPawn() : nullptr;
     UPlayerLoadoutComponent* Loadout=Pawn ? Pawn->FindComponentByClass<UPlayerLoadoutComponent>() : nullptr;

@@ -23,6 +23,18 @@ public:
 
 	/** Constructor */
 	ADeadEasyIncPlayerController();
+    UPROPERTY(Transient,BlueprintReadOnly,Category="Pause") bool bPauseMenuOpen=false;
+    UPROPERTY(Config,BlueprintReadOnly,Category="Settings") float MasterVolume=1.f;
+    UPROPERTY(Config,BlueprintReadOnly,Category="Settings") float MouseSensitivity=1.f;
+    virtual bool InputKey(const FInputKeyEventArgs& Params) override;
+    UFUNCTION(BlueprintCallable,Category="Pause") void TogglePauseMenu();
+    void ResumeGame();
+    void AdjustVolume(float Delta);
+    void AdjustSensitivity(float Delta);
+    void QuitGame();
+private:
+    void ApplyVolume();
+
 
 protected:
 

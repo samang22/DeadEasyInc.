@@ -1,4 +1,5 @@
 #include "Player/DeadEasyIncCharacter.h"
+#include "Player/DeadEasyIncPlayerController.h"
 // Copyright Epic Games, Inc. All Rights Reserved.
 #include "Progression/PlayerLoadoutComponent.h"
 #include "Scavenging/CorpseHandlingComponent.h"
@@ -89,7 +90,7 @@ void ADeadEasyIncCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInp
 
 		// Looking/Aiming
 		EnhancedInputComponent->BindAction(LookAction, ETriggerEvent::Triggered, this, &ADeadEasyIncCharacter::LookInput);
-		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &ADeadEasyIncCharacter::LookInput);
+		EnhancedInputComponent->BindAction(MouseLookAction, ETriggerEvent::Triggered, this, &ADeadEasyIncCharacter::MouseLookInput);
 	}
 	else
 	{
@@ -116,6 +117,13 @@ void ADeadEasyIncCharacter::LookInput(const FInputActionValue& Value)
 	// pass the axis values to the aim input
 	DoAim(LookAxisVector.X, LookAxisVector.Y);
 
+}
+
+void ADeadEasyIncCharacter::MouseLookInput(const FInputActionValue& Value)
+{
+    const auto* Player=Cast<ADeadEasyIncPlayerController>(GetController());
+    const FVector2D Axis=Value.Get<FVector2D>()*(Player ? Player->MouseSensitivity : 1.f);
+    DoAim(Axis.X,Axis.Y);
 }
 
 void ADeadEasyIncCharacter::DoAim(float Yaw, float Pitch)

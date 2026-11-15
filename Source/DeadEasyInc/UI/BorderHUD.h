@@ -12,6 +12,7 @@ public:
     virtual void DrawHUD() override;
     virtual void NotifyHitBoxClick(FName BoxName) override;
 private:
+    void DrawPauseMenu(class ADeadEasyIncPlayerController* Player);
     void DrawLoadout(class UPlayerLoadoutComponent* Loadout);
     void DrawStationMenu(class UPlayerLoadoutComponent* Loadout);
     void DrawNightConfirmation(class UPlayerLoadoutComponent* Loadout);
