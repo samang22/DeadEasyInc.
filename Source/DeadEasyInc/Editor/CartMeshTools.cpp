@@ -38,10 +38,10 @@ void WriteSubset(UStaticMesh* Target,const FMeshDescription& Source,const TSet<F
     for (FVertexInstanceID ID : Mesh.VertexInstances().GetElementIDs()) if (Mesh.GetVertexInstanceConnectedTriangleIDs(ID).Num()==0) Instances.Add(ID);
     for (FVertexInstanceID ID : Instances) Mesh.DeleteVertexInstance(ID);
     TArray<FEdgeID> Edges;
-    for (FEdgeID ID : Mesh.Edges().GetElementIDs()) if (Mesh.GetEdgeConnectedTriangles(ID).Num()==0) Edges.Add(ID);
+    for (FEdgeID ID : Mesh.Edges().GetElementIDs()) if (Mesh.GetEdgeConnectedTriangleIDs(ID).Num()==0) Edges.Add(ID);
     for (FEdgeID ID : Edges) Mesh.DeleteEdge(ID);
     TArray<FVertexID> Vertices;
-    for (FVertexID ID : Mesh.Vertices().GetElementIDs()) if (Mesh.GetVertexConnectedEdges(ID).Num()==0) Vertices.Add(ID);
+    for (FVertexID ID : Mesh.Vertices().GetElementIDs()) if (Mesh.GetVertexConnectedEdgeIDs(ID).Num()==0) Vertices.Add(ID);
     for (FVertexID ID : Vertices) Mesh.DeleteVertex(ID);
     FElementIDRemappings Remap;Mesh.Compact(Remap);
     Target->Modify();Target->CreateMeshDescription(0,MoveTemp(Mesh));Target->CommitMeshDescription(0);
