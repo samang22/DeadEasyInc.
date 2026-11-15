@@ -77,3 +77,4 @@ DerivedDataCache/*
 # Local IDE settings and generated solutions
 .idea/
 *.slnx
+*.sln.DotSettings.user
