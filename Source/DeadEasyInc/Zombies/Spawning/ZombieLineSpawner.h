@@ -21,6 +21,7 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spawner") int32 SpawnedThisNight = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spawner") int32 AliveFromThisSpawner = 0;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Spawner") FString LastSpawnIssue;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Spawner") TObjectPtr<class UZombieSpawnLayoutComponent> SpawnLayout;
     virtual void OnConstruction(const FTransform& Transform) override;
 protected:
     virtual void BeginPlay() override;
@@ -33,14 +34,9 @@ private:
     void StartWave(int32 Day);
     void SpawnStep();
     void Schedule(float Delay);
-    bool FindSpawnPoint(FVector& Position);
-    void ShuffleSlots();
     TWeakObjectPtr<ABorderGameMode> Mode;
     TSet<TWeakObjectPtr<ABorderZombie>> Alive;
     FTimerHandle SpawnTimer;
-    FRandomStream Random;
-    TArray<int32> Slots;
-    int32 Cursor = 0;
     int32 GroupSpawned = 0;
     int32 StartedDay = INDEX_NONE;
     bool bRunning = false;
