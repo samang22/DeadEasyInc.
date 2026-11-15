@@ -61,7 +61,7 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
     void Think(float Now);
-    bool BuildSegment(const FVector& Start,const FVector& End,TArray<FVector>& Points) const;
+    bool BuildSegment(const FVector& Start,const FVector& End,TArray<FVector>& Points,bool bAllowPartial=false) const;
     bool PlanRoute(AActor* Goal,const FVector& Destination,TArray<FVector>& Points,class ABuilding*& Blocker) const;
     bool InspectRoute(const TArray<FVector>& Points,class ABuilding*& Blocker) const;
     void ChooseBuildingGoal();
@@ -70,6 +70,7 @@ private:
     UPROPERTY(VisibleAnywhere, Category="Zombie|AI") TObjectPtr<AActor> CurrentTarget;
     TArray<FVector> Route;
     int32 Waypoint = 1;
+    bool bUsingFallback=false;
     int32 PlanRevision = INDEX_NONE;
     float NextDecisionTime = 0.f;
     float NextPathTime = 0.f;

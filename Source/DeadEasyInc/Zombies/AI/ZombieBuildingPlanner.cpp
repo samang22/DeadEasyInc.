@@ -32,7 +32,7 @@ void ABorderZombie::EndPlay(const EEndPlayReason::Type Reason)
     Super::EndPlay(Reason);
 }
 
-bool ABorderZombie::BuildSegment(const FVector& Start,const FVector& End,TArray<FVector>& Points) const
+bool ABorderZombie::BuildSegment(const FVector& Start,const FVector& End,TArray<FVector>& Points,bool bAllowPartial) const
 {
     UNavigationSystemV1* Nav=FNavigationSystem::GetCurrent<UNavigationSystemV1>(GetWorld());
     if (!Nav || !Nav->GetDefaultNavDataInstance())
@@ -41,9 +41,9 @@ bool ABorderZombie::BuildSegment(const FVector& Start,const FVector& End,TArray<
         Points={Start,End}; return true;
     }
     FNavLocation Destination;
-    if (!Nav->ProjectPointToNavigation(End,Destination,FVector(100,100,1000))) return false;
+    if (!Nav->ProjectPointToNavigation(End,Destination,FVector(bAllowPartial ? 1000.f : 100.f,bAllowPartial ? 1000.f : 100.f,1000.f))) return false;
     UNavigationPath* Path=UNavigationSystemV1::FindPathToLocationSynchronously(GetWorld(),Start,Destination.Location,const_cast<ABorderZombie*>(this));
-    if (!Path || !Path->IsValid() || Path->IsPartial() || Path->PathPoints.Num()<2) return false;
+    if (!Path || !Path->IsValid() || (!bAllowPartial && Path->IsPartial()) || Path->PathPoints.Num()<2) return false;
     Points=Path->PathPoints;
     return true;
 }
@@ -108,6 +108,7 @@ bool ABorderZombie::PlanRoute(AActor* Goal,const FVector& Destination,TArray<FVe
 
 void ABorderZombie::ChooseBuildingGoal()
 {
+    bUsingFallback=false;
     UBuildingTargetRegistry* Registry=GetWorld()->GetSubsystem<UBuildingTargetRegistry>();
     Registry->Release(this);
     TArray<ABuilding*> Candidates=Registry->GetTargets();
@@ -142,6 +143,44 @@ void ABorderZombie::ChooseBuildingGoal()
             BestGoal=Candidate;BestBlocker=Obstacle;BestTier=Tier;BestPriority=Priority;bBestBlocked=bBlocked;BestLength=Length;BestRoute=MoveTemp(Path);
         }
     }
+    // Interior objectives remain preferred. A disconnected navmesh must not leave
+    // the zombie idle when the border itself can be attacked from this side.
+    if (!BestGoal)
+    {
+        for (ABuilding* Candidate : Registry->GetTargets())
+        {
+            if (!Candidate->IsA<ABorderWall>()) continue;
+            TArray<FVector> Path; ABuilding* Obstacle=nullptr;
+            const bool bInReach=CanReach(Candidate,AttackReach);
+            if (!bInReach && !PlanRoute(Candidate,Registry->ClaimApproach(Candidate,this),Path,Obstacle)) continue;
+            const float Length=bInReach ? 0.f : RouteLength(Path);
+            if (!BestGoal || Length<BestLength)
+            {
+                BestGoal=Candidate;BestBlocker=Obstacle;BestLength=Length;BestRoute=MoveTemp(Path);
+            }
+        }
+    }
+    if (!BestGoal)
+    {
+        // Keep an objective even if no complete attack route exists. Walk only as
+        // far as a valid (possibly partial) navigation path allows, then wait.
+        float Nearest=TNumericLimits<float>::Max();
+        for (ABuilding* Candidate : Registry->GetTargets())
+        {
+            const float Distance=FVector::DistSquared2D(GetActorLocation(),TargetPoint(Candidate));
+            if (Distance<Nearest) { Nearest=Distance;BestGoal=Candidate; }
+        }
+        if (BestGoal)
+        {
+            bUsingFallback=true;
+            if (BuildSegment(GetNavAgentLocation(),Registry->ClaimApproach(BestGoal,this),BestRoute,true))
+            {
+                ABuilding* Obstacle=nullptr;
+                if (!InspectRoute(BestRoute,Obstacle)) BestRoute.Reset();
+                else BestBlocker=Obstacle;
+            }
+        }
+    }
     Registry->Release(this);
     CurrentObjective=BestGoal;
     CurrentTarget=BestBlocker ? BestBlocker : BestGoal;
@@ -166,10 +205,13 @@ void ABorderZombie::Think(float Now)
         CurrentObjective=Player;
         ABuilding* Blocker=nullptr;
         if (PlanRoute(Player,Cast<ACharacter>(Player) ? Cast<ACharacter>(Player)->GetNavAgentLocation() : Player->GetActorLocation(),Route,Blocker))
+        {
+            bUsingFallback=false;
             CurrentTarget=Blocker ? static_cast<AActor*>(Blocker) : Player;
-        else { CurrentTarget=nullptr;Route.Reset(); }
-        Waypoint=1; NextPathTime=0.f;
-        return;
+            Waypoint=1;NextPathTime=0.f;
+            return;
+        }
+        CurrentTarget=nullptr;Route.Reset();
     }
     if (CurrentObjective==Player) { CurrentObjective=nullptr;CurrentTarget=nullptr; }
     const bool bStuck=FVector::DistSquared2D(LastProgressLocation,GetActorLocation())<900.f && Now-LastProgressTime>2.f;
@@ -189,6 +231,8 @@ void ABorderZombie::FollowRoute(float DeltaSeconds)
 {
     if (Route.Num()<2) { GetCharacterMovement()->StopMovementImmediately(); return; }
     while (Waypoint<Route.Num()-1 && FVector::DistSquared2D(GetActorLocation(),Route[Waypoint])<1600.f) ++Waypoint;
+    if (bUsingFallback && Waypoint==Route.Num()-1 && FVector::DistSquared2D(GetActorLocation(),Route.Last())<1600.f)
+    { GetCharacterMovement()->StopMovementImmediately();return; }
     FVector Direction=Route[FMath::Clamp(Waypoint,0,Route.Num()-1)]-GetActorLocation();
     Direction.Z=0;Direction.Normalize();
     PushCorpses(Direction,DeltaSeconds);
