@@ -1,4 +1,6 @@
 #include "Buildings/Building.h"
+#include "Buildings/BuildingDamageDecalComponent.h"
+#include "Engine/DamageEvents.h"
 #include "Buildings/Data/BuildingSettings.h"
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -8,6 +10,7 @@
 
 ABuilding::ABuilding()
 {
+    DamageDecals=CreateDefaultSubobject<UBuildingDamageDecalComponent>(TEXT("DamageDecals"));
     CombatHealth = CreateDefaultSubobject<UCombatHealthComponent>(TEXT("CombatHealth"));
     GetStaticMeshComponent()->SetCollisionProfileName(TEXT("BlockAll"));
     GetStaticMeshComponent()->SetCanEverAffectNavigation(false);
@@ -22,11 +25,26 @@ ABuilding::ABuilding()
     BuildingRepairAnchor->SetCollisionResponseToChannel(ECC_GameTraceChannel2,ECR_Block);
 }
 
+float ABuilding::TakeDamage(float Amount,const FDamageEvent& Event,AController* InstigatorController,AActor* Causer)
+{
+    const float PreviousHealth=CombatHealth->Health;
+    const float Applied=Super::TakeDamage(Amount,Event,InstigatorController,Causer);
+    if (Applied>0.f && CombatHealth->Health<PreviousHealth && !IsActorBeingDestroyed() &&
+        Event.IsOfType(FPointDamageEvent::ClassID))
+        DamageDecals->AddHit(static_cast<const FPointDamageEvent&>(Event).HitInfo);
+    return Applied;
+}
+
 void ABuilding::BeginPlay()
 {
     Super::BeginPlay();
     FVector Min,Max;GetStaticMeshComponent()->GetLocalBounds(Min,Max);
     BuildingRepairAnchor->SetRelativeLocation((Min+Max)*.5f);BuildingRepairAnchor->SetBoxExtent((Max-Min)*.5f+FVector(1));
+    if (!DamageDecals->DecalMaterial)
+    {
+        const UBuildingSettings* DecalSettings=Settings ? Settings.Get() : GetClass()->GetDefaultObject<ABuilding>()->Settings.Get();
+        if (DecalSettings) DamageDecals->DecalMaterial=DecalSettings->DamageDecalMaterial;
+    }
     if (Settings)
     {
         CombatHealth->MaxHealth = FMath::Max(1.f, Settings->MaxHealth);
@@ -50,11 +68,7 @@ void ABuilding::UpdateCondition(float Health, float MaxHealth)
     const float Ratio = MaxHealth > 0.f ? Health / MaxHealth : 0.f;
     const EBuildingCondition NewCondition = Ratio <= 0.f ? EBuildingCondition::Destroyed :
         Ratio <= (Settings ? Settings->CriticalThreshold : 0.35f) ? EBuildingCondition::Critical : Ratio <= (Settings ? Settings->DamagedThreshold : 0.75f) ? EBuildingCondition::Damaged : EBuildingCondition::Healthy;
-    UMaterialInterface* Material = NewCondition == EBuildingCondition::Healthy ? HealthyMaterial.Get() :
-        NewCondition == EBuildingCondition::Damaged ? DamagedMaterial.Get() : CriticalMaterial.Get();
-    if (Material)
-        for (int32 Index = 0; Index < GetStaticMeshComponent()->GetNumMaterials(); ++Index)
-            GetStaticMeshComponent()->SetMaterial(Index, Material);
+    // Preserve imported mesh materials; surface damage is an optional decal layer.
     const bool bChanged = NewCondition != Condition;
     if ((NewCondition==EBuildingCondition::Destroyed)!=(Condition==EBuildingCondition::Destroyed))
         GetWorld()->GetSubsystem<UBuildingTargetRegistry>()->GeometryChanged();

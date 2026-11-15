@@ -20,6 +20,8 @@ class DEADEASYINC_API UBuildingSettings : public UDataAsset
 {
     GENERATED_BODY()
 public:
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Building|Appearance")
+    TObjectPtr<class UMaterialInterface> DamageDecalMaterial;
     // Entry 0 describes level 1; later entries are paid upgrades.
     UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Upgrades") TArray<FBuildingUpgrade> Levels;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Building")

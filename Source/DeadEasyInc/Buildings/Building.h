@@ -16,6 +16,9 @@ class DEADEASYINC_API ABuilding : public AStaticMeshActor
     GENERATED_BODY()
 public:
     ABuilding();
+    virtual float TakeDamage(float Amount,const FDamageEvent& Event,AController* InstigatorController,AActor* Causer) override;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Building|Appearance")
+    TObjectPtr<class UBuildingDamageDecalComponent> DamageDecals;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Upgrades") TObjectPtr<class UStaticMeshComponent> TierTwoVisual;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Upgrades") TObjectPtr<class UStaticMeshComponent> TierThreeVisual;
     UPROPERTY(VisibleAnywhere) TObjectPtr<class UBoxComponent> BuildingRepairAnchor;

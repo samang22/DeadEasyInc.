@@ -14,6 +14,7 @@
 #include "Animation/AnimSequence.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "EngineUtils.h"
 
@@ -130,7 +131,24 @@ void ABorderZombie::Tick(float DeltaSeconds)
         {
             bAttackPending = false;
             if (CanReach(AttackTarget.Get(), AttackReach))
-                UGameplayStatics::ApplyDamage(AttackTarget.Get(), AttackDamage, GetController(), this, nullptr);
+            {
+                AActor* Victim=AttackTarget.Get();
+                FHitResult Hit;
+                bool bHasSurfaceHit=false;
+                const FVector Start=GetActorLocation();
+                const FVector Point=TargetPoint(Victim);
+                const FVector Direction=(Point-Start).GetSafeNormal();
+                if (auto* Building=Cast<ABuilding>(Victim))
+                {
+                    FCollisionQueryParams Params(SCENE_QUERY_STAT(ZombieBuildingImpact),false,this);
+                    // Component geometry traces may report touching hits rather than blocking hits.
+                    bHasSurfaceHit=GetWorld()->LineTraceSingleByChannel(Hit,Start,Point+Direction*10.f,ECC_Visibility,Params) && Hit.GetActor()==Building;
+                }
+                if (bHasSurfaceHit)
+                    UGameplayStatics::ApplyPointDamage(Victim,AttackDamage,Direction,Hit,GetController(),this,nullptr);
+                else
+                    UGameplayStatics::ApplyDamage(Victim,AttackDamage,GetController(),this,nullptr);
+            }
         }
         else return;
     }
