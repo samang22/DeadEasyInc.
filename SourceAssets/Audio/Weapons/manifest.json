@@ -1,0 +1,298 @@
+{
+  "sample_rate": 48000,
+  "channels": 1,
+  "format": "PCM16",
+  "provenance": "Original procedural synthesis, without third-party samples",
+  "weapons": {
+    "Knife": {
+      "Swing": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Swing/S_Knife_Swing.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Swing/S_Knife_Swing",
+        "duration": 0.18,
+        "peak": 0.42
+      },
+      "HitOrganic": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Knife_HitOrganic.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Knife_HitOrganic",
+        "duration": 0.29,
+        "peak": 0.63
+      },
+      "HitMetal": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Knife_HitMetal.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Knife_HitMetal",
+        "duration": 0.45,
+        "peak": 0.63
+      },
+      "HitStructure": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Knife_HitStructure.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Knife_HitStructure",
+        "duration": 0.29,
+        "peak": 0.63
+      },
+      "Equip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Knife_Equip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Knife_Equip",
+        "duration": 0.18,
+        "peak": 0.4
+      },
+      "Unequip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Knife_Unequip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Knife_Unequip",
+        "duration": 0.15,
+        "peak": 0.4
+      }
+    },
+    "Bat": {
+      "Swing": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Swing/S_Bat_Swing.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Swing/S_Bat_Swing",
+        "duration": 0.27,
+        "peak": 0.42
+      },
+      "HitOrganic": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Bat_HitOrganic.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Bat_HitOrganic",
+        "duration": 0.29,
+        "peak": 0.63
+      },
+      "HitMetal": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Bat_HitMetal.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Bat_HitMetal",
+        "duration": 0.45,
+        "peak": 0.63
+      },
+      "HitStructure": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Bat_HitStructure.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Bat_HitStructure",
+        "duration": 0.29,
+        "peak": 0.63
+      },
+      "Equip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Bat_Equip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Bat_Equip",
+        "duration": 0.192,
+        "peak": 0.4
+      },
+      "Unequip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Bat_Unequip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Bat_Unequip",
+        "duration": 0.16,
+        "peak": 0.4
+      }
+    },
+    "Axe": {
+      "Swing": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Swing/S_Axe_Swing.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Swing/S_Axe_Swing",
+        "duration": 0.3143,
+        "peak": 0.42
+      },
+      "HitOrganic": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Axe_HitOrganic.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Axe_HitOrganic",
+        "duration": 0.29,
+        "peak": 0.63
+      },
+      "HitMetal": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Axe_HitMetal.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Axe_HitMetal",
+        "duration": 0.45,
+        "peak": 0.63
+      },
+      "HitStructure": {
+        "wav": "SourceAssets/Audio/Weapons/Melee/Impact/S_Axe_HitStructure.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Melee/Impact/S_Axe_HitStructure",
+        "duration": 0.29,
+        "peak": 0.63
+      },
+      "Equip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Axe_Equip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Axe_Equip",
+        "duration": 0.204,
+        "peak": 0.4
+      },
+      "Unequip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Axe_Unequip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Axe_Unequip",
+        "duration": 0.17,
+        "peak": 0.4
+      }
+    },
+    "Pistol": {
+      "Fire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Fire/S_Pistol_Fire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Fire/S_Pistol_Fire",
+        "duration": 0.32,
+        "peak": 0.76
+      },
+      "ReloadStart": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Pistol_ReloadStart.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Pistol_ReloadStart",
+        "duration": 0.2,
+        "peak": 0.4
+      },
+      "ReloadInsert": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Pistol_ReloadInsert.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Pistol_ReloadInsert",
+        "duration": 0.25,
+        "peak": 0.4
+      },
+      "ReloadEnd": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Pistol_ReloadEnd.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Pistol_ReloadEnd",
+        "duration": 0.18,
+        "peak": 0.4
+      },
+      "DryFire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/DryFire/S_Pistol_DryFire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/DryFire/S_Pistol_DryFire",
+        "duration": 0.12,
+        "peak": 0.34
+      },
+      "Equip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Pistol_Equip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Pistol_Equip",
+        "duration": 0.216,
+        "peak": 0.4
+      },
+      "Unequip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Pistol_Unequip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Pistol_Unequip",
+        "duration": 0.18,
+        "peak": 0.4
+      }
+    },
+    "Rifle": {
+      "Fire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Fire/S_Rifle_Fire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Fire/S_Rifle_Fire",
+        "duration": 0.42,
+        "peak": 0.76
+      },
+      "ReloadStart": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Rifle_ReloadStart.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Rifle_ReloadStart",
+        "duration": 0.2,
+        "peak": 0.4
+      },
+      "ReloadInsert": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Rifle_ReloadInsert.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Rifle_ReloadInsert",
+        "duration": 0.25,
+        "peak": 0.4
+      },
+      "ReloadEnd": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Rifle_ReloadEnd.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Rifle_ReloadEnd",
+        "duration": 0.27,
+        "peak": 0.4
+      },
+      "DryFire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/DryFire/S_Rifle_DryFire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/DryFire/S_Rifle_DryFire",
+        "duration": 0.12,
+        "peak": 0.34
+      },
+      "Equip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Rifle_Equip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Rifle_Equip",
+        "duration": 0.228,
+        "peak": 0.4
+      },
+      "Unequip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Rifle_Unequip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Rifle_Unequip",
+        "duration": 0.19,
+        "peak": 0.4
+      }
+    },
+    "Shotgun": {
+      "Fire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Fire/S_Shotgun_Fire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Fire/S_Shotgun_Fire",
+        "duration": 0.6,
+        "peak": 0.76
+      },
+      "ReloadStart": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Shotgun_ReloadStart.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Shotgun_ReloadStart",
+        "duration": 0.2,
+        "peak": 0.4
+      },
+      "ReloadInsert": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Shotgun_ReloadInsert.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Shotgun_ReloadInsert",
+        "duration": 0.43,
+        "peak": 0.4
+      },
+      "ReloadEnd": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Shotgun_ReloadEnd.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Shotgun_ReloadEnd",
+        "duration": 0.27,
+        "peak": 0.4
+      },
+      "DryFire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/DryFire/S_Shotgun_DryFire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/DryFire/S_Shotgun_DryFire",
+        "duration": 0.12,
+        "peak": 0.34
+      },
+      "Equip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Shotgun_Equip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Shotgun_Equip",
+        "duration": 0.24,
+        "peak": 0.4
+      },
+      "Unequip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Shotgun_Unequip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Shotgun_Unequip",
+        "duration": 0.2,
+        "peak": 0.4
+      }
+    },
+    "Sniper": {
+      "Fire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Fire/S_Sniper_Fire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Fire/S_Sniper_Fire",
+        "duration": 0.85,
+        "peak": 0.76
+      },
+      "ReloadStart": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Sniper_ReloadStart.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Sniper_ReloadStart",
+        "duration": 0.2,
+        "peak": 0.4
+      },
+      "ReloadInsert": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Sniper_ReloadInsert.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Sniper_ReloadInsert",
+        "duration": 0.25,
+        "peak": 0.4
+      },
+      "ReloadEnd": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/Reload/S_Sniper_ReloadEnd.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/Reload/S_Sniper_ReloadEnd",
+        "duration": 0.27,
+        "peak": 0.4
+      },
+      "DryFire": {
+        "wav": "SourceAssets/Audio/Weapons/Firearms/DryFire/S_Sniper_DryFire.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Firearms/DryFire/S_Sniper_DryFire",
+        "duration": 0.12,
+        "peak": 0.34
+      },
+      "Equip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Sniper_Equip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Sniper_Equip",
+        "duration": 0.252,
+        "peak": 0.4
+      },
+      "Unequip": {
+        "wav": "SourceAssets/Audio/Weapons/Equip/S_Sniper_Unequip.wav",
+        "asset": "/Game/DeadEasyInc/Audio/Weapons/Equip/S_Sniper_Unequip",
+        "duration": 0.21,
+        "peak": 0.4
+      }
+    }
+  }
+}

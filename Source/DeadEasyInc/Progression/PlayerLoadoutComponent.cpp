@@ -215,6 +215,7 @@ void UPlayerLoadoutComponent::Interact()
     bNightConfirmationOpen = Switch != nullptr;
     NightSwitch = Switch;
     StopFire();
+    if (Equipped) Equipped->CancelReloadAudio();
     bReloading = false;
     OpenStation = Station;
     bMenuOpen = true;
@@ -255,11 +256,11 @@ void UPlayerLoadoutComponent::CloseMenu()
 void UPlayerLoadoutComponent::StartFire()
 {
     if (!CanAct() || bMenuOpen) return;
-    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) if (Work->bActive) { Work->Primary();return; }
-    bFireHeld=true;Fire();
+    if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) if (Work->IsPushing() || Work->bActive) { Work->Primary();return; }
+    bDryFirePlayed=false;bFireHeld=true;Fire();
 }
-void UPlayerLoadoutComponent::StopFire() { bFireHeld = false; }
-void UPlayerLoadoutComponent::StopActions() { StopFire(); bReloading = false; CloseMenu(); }
+void UPlayerLoadoutComponent::StopFire() { bFireHeld=false;bDryFirePlayed=false; }
+void UPlayerLoadoutComponent::StopActions() { StopFire();if (Equipped) Equipped->CancelReloadAudio();bReloading=false;CloseMenu(); }
 void UPlayerLoadoutComponent::Fire()
 {
     UWeaponDefinition* Weapon = GetActiveWeapon();
@@ -268,7 +269,13 @@ void UPlayerLoadoutComponent::Fire()
     if (Weapon->Category == EWeaponCategory::Ranged)
     {
         int32& Ammo = State.Magazines.FindOrAdd(Weapon->Id);
-        if (Ammo <= 0) { Message = TEXT("Empty magazine - press R"); return; }
+        if (Ammo <= 0)
+        {
+            Message=TEXT("Empty magazine - press R");
+            if (!bDryFirePlayed) { Equipped->PlayDryFire();bDryFirePlayed=true; }
+            NextAttackTime=Now+FMath::Max(.15f,Weapon->AttackInterval);return;
+        }
+        bDryFirePlayed=false;
         --Ammo;
     }
     if (Equipped->Attack(Weapon)) LastHitTime = Now;
@@ -312,10 +319,14 @@ void UPlayerLoadoutComponent::Cycle(const FInputActionValue& Value)
 }
 void UPlayerLoadoutComponent::Equip()
 {
-    StopFire();
-    bReloading = false;
-    if (Equipped) { Equipped->Destroy(); Equipped = nullptr; }
-    UWeaponDefinition* Weapon = GetActiveWeapon();
+    StopFire();bReloading=false;
+    UWeaponDefinition* Weapon=GetActiveWeapon();
+    if (Equipped)
+    {
+        Equipped->CancelReloadAudio();
+        if (Equipped->WeaponDefinition==Weapon) return; // Refreshing the same weapon is not a switch.
+        Equipped->PlayUnequip();Equipped->Destroy();Equipped=nullptr;
+    }
     ADeadEasyIncCharacter* Character = Cast<ADeadEasyIncCharacter>(GetOwner());
     if (!Character || !Weapon || !Weapon->WeaponClass) return;
     FActorSpawnParameters Params;
@@ -326,6 +337,7 @@ void UPlayerLoadoutComponent::Equip()
     if (!Equipped) return;
     Equipped->AttachToComponent(Character->GetFirstPersonCameraComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
     Equipped->SetActorRelativeTransform(Equipped->ViewTransform);
+    Equipped->ConfigureAudio(Weapon);Equipped->PlayEquip();
 }
 
 void UPlayerLoadoutComponent::TickComponent(float DeltaSeconds, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -339,7 +351,7 @@ void UPlayerLoadoutComponent::TickComponent(float DeltaSeconds, ELevelTick TickT
             !OpenStation.IsValid() || OpenStation->Condition==EBuildingCondition::Destroyed || GetFocusedStation()!=OpenStation.Get();
         if (!CanAct() || bInvalid || (Mode && Mode->bIsNight)) CloseMenu();
     }
-    if (!CanAct()) { StopFire(); bReloading = false; return; }
+    if (!CanAct()) { StopFire();if (Equipped) Equipped->CancelReloadAudio();bReloading=false;return; }
     UWeaponDefinition* Weapon = GetActiveWeapon();
     if (bReloading && Weapon && GetWorld()->GetTimeSeconds() >= ReloadEndTime)
     {

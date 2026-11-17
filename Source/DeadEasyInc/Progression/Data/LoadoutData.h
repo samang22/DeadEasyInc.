@@ -9,11 +9,36 @@ class AEquippedWeapon;
 UENUM(BlueprintType)
 enum class EWeaponCategory : uint8 { Ranged, Melee };
 
+USTRUCT(BlueprintType)
+struct FWeaponAudioSettings
+{
+    GENERATED_BODY()
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> SwingSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> FireSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> OrganicImpactSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> MetalImpactSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> StructureImpactSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> ReloadStartSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> ReloadInsertSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> ReloadEndSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> DryFireSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> EquipSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundBase> UnequipSound;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundAttenuation> ImpactAttenuation;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly) TObjectPtr<class USoundConcurrency> Concurrency;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,meta=(ClampMin="0",ClampMax="2")) float Volume=.7f;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,meta=(ClampMin="0.5",ClampMax="2")) float Pitch=1.f;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,meta=(ClampMin="0",ClampMax="0.15")) float PitchVariation=.035f;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,meta=(ClampMin="0.05",ClampMax="0.8")) float ReloadInsertFraction=.45f;
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,meta=(ClampMin="0.6",ClampMax="0.98")) float ReloadEndFraction=.85f;
+};
+
 UCLASS(BlueprintType)
 class DEADEASYINC_API UWeaponDefinition : public UDataAsset
 {
     GENERATED_BODY()
 public:
+    UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Weapon|Audio") FWeaponAudioSettings Audio;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) FName Id;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) FText DisplayName;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) EWeaponCategory Category = EWeaponCategory::Ranged;

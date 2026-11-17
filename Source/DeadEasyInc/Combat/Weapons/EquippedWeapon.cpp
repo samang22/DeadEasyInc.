@@ -8,6 +8,10 @@
 #include "Progression/PlayerLoadoutComponent.h"
 #include "HAL/IConsoleManager.h"
 #include "DrawDebugHelpers.h"
+#include "Components/AudioComponent.h"
+#include "PhysicalMaterials/PhysicalMaterial.h"
+#include "Materials/MaterialInterface.h"
+#include "TimerManager.h"
 
 static TAutoConsoleVariable<int32> CVarDamageDebug(TEXT("de.DamageDebug"),0,TEXT("Show weapon traces, bones and damage (0/1)."),ECVF_Cheat);
 
@@ -52,6 +56,10 @@ bool AEquippedWeapon::Attack(const UWeaponDefinition* Definition)
     const int32 Count = bMelee ? 1 : FMath::Clamp(Definition->Pellets, 1, 32);
     FCollisionQueryParams Params(SCENE_QUERY_STAT(PlayerWeapon), false, Pawn);
     Params.AddIgnoredActor(this);
+    Params.bReturnPhysicalMaterial=true;
+    // There is no bound attack montage: this is the actual instantaneous attack window.
+    PlayWeaponSound(bMelee ? (Definition->Audio.SwingSound ? Definition->Audio.SwingSound.Get() : AttackSound.Get()) :
+        (Definition->Audio.FireSound ? Definition->Audio.FireSound.Get() : AttackSound.Get()));
     for (int32 Index=0; Index<Count; ++Index)
     {
         const FVector Direction = FMath::VRandCone(View.Vector(), FMath::DegreesToRadians(FMath::Max(0.f, Definition->SpreadDegrees)));
@@ -62,6 +70,8 @@ bool AEquippedWeapon::Attack(const UWeaponDefinition* Definition)
                 FCollisionShape::MakeSphere(FMath::Max(1.f, Definition->MeleeRadius)), Params);
         else
             GetWorld()->LineTraceSingleByChannel(Hit, Eye, End, ECC_GameTraceChannel4, Params);
+        // Melee uses one single sweep per attack, so one blocking impact cannot double-play.
+        if (bMelee && Hit.bBlockingHit) PlayImpact(Hit);
         if (ABorderZombie* Zombie = Cast<ABorderZombie>(Hit.GetActor()))
         {
             if (!Zombie->bDead)
@@ -90,12 +100,92 @@ bool AEquippedWeapon::Attack(const UWeaponDefinition* Definition)
             Loadout->DamageDebugText=Hits>0 ? FString::Printf(TEXT("Bone %s | Hits %d / Head %d | Damage %.0f (applied %.0f) | HP %.0f"),*LastBone.ToString(),Hits,HeadHits,RequestedDamage,AppliedDamage,RemainingHealth) : TEXT("MISS / BLOCKED - no living zombie damaged");
         }
     }
-    if (AttackSound) UGameplayStatics::PlaySound2D(this, AttackSound);
     SetActorRelativeLocation(ViewTransform.GetLocation() + FVector(-3,0,bMelee ? -3 : 1));
     return bHitZombie;
 }
 
+float AEquippedWeapon::AudioPitch() const
+{
+    if (!WeaponDefinition) return 1.f;
+    const auto& Audio=WeaponDefinition->Audio;
+    return FMath::Clamp(Audio.Pitch+FMath::FRandRange(-Audio.PitchVariation,Audio.PitchVariation),.5f,2.f);
+}
+void AEquippedWeapon::PlayWeaponSound(USoundBase* Sound)
+{
+    if (!Sound) return;
+    const auto* Pawn=Cast<APawn>(GetOwner());
+    const float Volume=WeaponDefinition ? WeaponDefinition->Audio.Volume : 1.f;
+    auto* Concurrency=WeaponDefinition ? WeaponDefinition->Audio.Concurrency.Get() : nullptr;
+    if (Pawn && Pawn->IsLocallyControlled())
+        UGameplayStatics::PlaySound2D(this,Sound,Volume,AudioPitch(),0.f,Concurrency,GetOwner(),false);
+    else
+        UGameplayStatics::PlaySoundAtLocation(this,Sound,GetActorLocation(),FRotator::ZeroRotator,Volume,AudioPitch(),0.f,
+            WeaponDefinition ? WeaponDefinition->Audio.ImpactAttenuation.Get() : nullptr,Concurrency,GetOwner());
+}
+void AEquippedWeapon::PlayImpact(const FHitResult& Hit)
+{
+    if (!WeaponDefinition) return;
+    const auto& Audio=WeaponDefinition->Audio;
+    USoundBase* Sound=Audio.StructureImpactSound;
+    if (Cast<ABorderZombie>(Hit.GetActor())) Sound=Audio.OrganicImpactSound;
+    else
+    {
+        const auto* Component=Hit.GetComponent();
+        const AActor* Actor=Hit.GetActor();
+        auto IsMetalName=[](const FString& Name)
+        { return Name.Contains(TEXT("Metal")) || Name.Contains(TEXT("Steel")) || Name.Contains(TEXT("Iron")); };
+        bool bMetal=(Actor && Actor->ActorHasTag(TEXT("Metal"))) || (Component && Component->ComponentHasTag(TEXT("Metal"))) ||
+            (Hit.PhysMaterial.IsValid() && IsMetalName(Hit.PhysMaterial->GetName()));
+        if (!bMetal && Component)
+            for (int32 Index=0;Index<Component->GetNumMaterials();++Index)
+                if (const auto* Material=Component->GetMaterial(Index);Material && IsMetalName(Material->GetName())) { bMetal=true;break; }
+        if (bMetal && Audio.MetalImpactSound) Sound=Audio.MetalImpactSound;
+    }
+    if (Sound) UGameplayStatics::PlaySoundAtLocation(this,Sound,Hit.ImpactPoint,FRotator::ZeroRotator,Audio.Volume,
+        AudioPitch(),0.f,Audio.ImpactAttenuation,Audio.Concurrency,GetOwner());
+}
+void AEquippedWeapon::PlayEquip() { if (WeaponDefinition) PlayWeaponSound(WeaponDefinition->Audio.EquipSound); }
+void AEquippedWeapon::PlayUnequip() { if (WeaponDefinition) PlayWeaponSound(WeaponDefinition->Audio.UnequipSound); }
+void AEquippedWeapon::PlayDryFire() { if (WeaponDefinition) PlayWeaponSound(WeaponDefinition->Audio.DryFireSound); }
+void AEquippedWeapon::CancelReloadAudio()
+{
+    if (GetWorld())
+    {
+        GetWorld()->GetTimerManager().ClearTimer(ReloadInsertTimer);
+        GetWorld()->GetTimerManager().ClearTimer(ReloadEndTimer);
+    }
+    for (UAudioComponent* Voice : ReloadVoices) if (IsValid(Voice)) Voice->Stop();
+    ReloadVoices.Reset();
+}
+void AEquippedWeapon::PlayReloadStage(USoundBase* Sound)
+{
+    if (!Sound || !WeaponDefinition) return;
+    ReloadVoices.RemoveAll([](const auto& Voice){ return !IsValid(Voice) || !Voice->IsPlaying(); });
+    UAudioComponent* Voice=nullptr;
+    const auto* Pawn=Cast<APawn>(GetOwner());
+    const auto& Audio=WeaponDefinition->Audio;
+    if (Pawn && Pawn->IsLocallyControlled())
+        Voice=UGameplayStatics::SpawnSound2D(this,Sound,Audio.Volume,AudioPitch(),0.f,Audio.Concurrency,false,true);
+    else
+        Voice=UGameplayStatics::SpawnSoundAtLocation(this,Sound,GetActorLocation(),FRotator::ZeroRotator,Audio.Volume,
+            AudioPitch(),0.f,Audio.ImpactAttenuation,Audio.Concurrency,true);
+    if (Voice) { Voice->bIsUISound=false;ReloadVoices.Add(Voice); }
+}
 void AEquippedWeapon::PlayReload()
 {
-    if (ReloadSound) UGameplayStatics::PlaySound2D(this, ReloadSound);
+    CancelReloadAudio();
+    if (!WeaponDefinition) { PlayWeaponSound(ReloadSound);return; }
+    const auto& Audio=WeaponDefinition->Audio;
+    PlayReloadStage(Audio.ReloadStartSound ? Audio.ReloadStartSound.Get() : ReloadSound.Get());
+    const float Duration=FMath::Max(.1f,WeaponDefinition->ReloadTime);
+    const float Insert=FMath::Clamp(Audio.ReloadInsertFraction,.05f,.8f);
+    const float End=FMath::Clamp(Audio.ReloadEndFraction,Insert+.05f,.98f);
+    GetWorld()->GetTimerManager().SetTimer(ReloadInsertTimer,this,&AEquippedWeapon::PlayReloadInsert,Duration*Insert,false);
+    GetWorld()->GetTimerManager().SetTimer(ReloadEndTimer,this,&AEquippedWeapon::PlayReloadEnd,Duration*End,false);
+}
+void AEquippedWeapon::PlayReloadInsert() { if (WeaponDefinition) PlayReloadStage(WeaponDefinition->Audio.ReloadInsertSound); }
+void AEquippedWeapon::PlayReloadEnd() { if (WeaponDefinition) PlayReloadStage(WeaponDefinition->Audio.ReloadEndSound); }
+void AEquippedWeapon::EndPlay(const EEndPlayReason::Type Reason)
+{
+    CancelReloadAudio();Super::EndPlay(Reason);
 }

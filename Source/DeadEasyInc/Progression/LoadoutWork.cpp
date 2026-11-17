@@ -66,6 +66,7 @@ void UPlayerLoadoutComponent::OpenUpgrade()
     if (!Building || !Building->Settings || Building->Settings->Levels.Num()<2 || Building->Condition==EBuildingCondition::Destroyed) return;
     if (bMenuOpen) CloseMenu();
     UpgradeBuilding=Building;bMenuOpen=true;StopFire();bReloading=false;
+    if (Equipped) Equipped->CancelReloadAudio();
     if (auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>()) Work->Release();
     if (auto* Player=Cast<APlayerController>(Cast<APawn>(GetOwner())->GetController()))
     {

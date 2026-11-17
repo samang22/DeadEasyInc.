@@ -103,6 +103,7 @@ private:
     TWeakObjectPtr<AProgressionStation> OpenStation;
     TWeakObjectPtr<class AGateSwitch> NightSwitch;
     bool bFireHeld = false;
+    bool bDryFirePlayed=false;
     float NextAttackTime = 0.f;
     float ReloadEndTime = 0.f;
     bool bExecutingTransaction=false;
