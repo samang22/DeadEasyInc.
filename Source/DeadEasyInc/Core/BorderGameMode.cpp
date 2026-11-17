@@ -34,7 +34,8 @@ void ABorderGameMode::BeginPlay()
         RetryDelay = Settings->RetryDelay;
     }
     for (TActorIterator<ADayNightDirector> It(GetWorld()); It; ++It) { Director = *It; break; }
-    if (Director) Director->OnTransitionFinished.AddDynamic(this,&ABorderGameMode::FinishNightTransition);
+    if (!Director) Director=GetWorld()->SpawnActor<ADayNightDirector>();
+    if (Director) Director->OnTransitionFinished.AddDynamic(this,&ABorderGameMode::HandleTransitionFinished);
     // The player pawn is spawned after the GameMode starts play.
     GetWorldTimerManager().SetTimerForNextTick(FTimerDelegate::CreateWeakLambda(this, [this]()
     {
@@ -82,6 +83,30 @@ void ABorderGameMode::ApplyPhase()
 void ABorderGameMode::StartDay()
 {
     if (bGameOver || bTransitioning) return;
+    if (bIsNight && Director)
+    {
+        bTransitionToNight=false;bTransitioning=true;
+        LockTransitionInput(true);
+        if (!ActiveGate.IsValid())
+            for (TActorIterator<ABorderGate> It(GetWorld());It;++It) { ActiveGate=*It;break; }
+        Director->BeginDayTransition(ActiveGate.Get(),TransitionDuration);
+        GetWorldTimerManager().SetTimer(PhaseTimer,this,&ABorderGameMode::FinishDayTransition,FMath::Max(.1f,TransitionDuration)+.25f,false);
+        return;
+    }
+    FinishDayTransition();
+}
+void ABorderGameMode::HandleTransitionFinished()
+{
+    if (!bTransitioning || bGameOver) return;
+    if (bTransitionToNight) FinishNightTransition();
+    else FinishDayTransition();
+}
+void ABorderGameMode::FinishDayTransition()
+{
+    if (bGameOver || (bTransitioning && bTransitionToNight)) return;
+    const bool bWasTransitioning=bTransitioning;
+    GetWorldTimerManager().ClearTimer(PhaseTimer);
+    bTransitioning=false;
 #if !UE_BUILD_SHIPPING
     TArray<TWeakObjectPtr<ABorderZombie>> Corpses;
     for (TActorIterator<ABorderZombie> It(GetWorld()); It; ++It)
@@ -123,7 +148,10 @@ void ABorderGameMode::StartDay()
     WaveSources.Reset();
     FinishedSources.Reset();
     BindDefeatConditions();
+    if (APawn* Player=UGameplayStatics::GetPlayerPawn(this,0))
+        if (auto* Health=Player->FindComponentByClass<UCombatHealthComponent>()) Health->RestoreHealth(Health->MaxHealth);
     ApplyPhase();
+    if (bWasTransitioning) LockTransitionInput(false);
 #if !UE_BUILD_SHIPPING
     TraceCorpses(TEXT("after phase"));
 #endif
@@ -157,6 +185,7 @@ bool ABorderGameMode::BeginNight(ABorderGate* Gate)
 {
     if (!CanBeginNight(Gate)) return false;
     ActiveGate = Gate;
+    bTransitionToNight=true;
     bTransitioning = true;
     LockTransitionInput(true);
     Gate->SetTransitionBarrier(true);
@@ -173,6 +202,8 @@ void ABorderGameMode::LockTransitionInput(bool bLocked)
     {
         if (APawn* Pawn = Player->GetPawn())
         {
+            if (bLocked)
+                if (auto* Work=Pawn->FindComponentByClass<UCorpseHandlingComponent>()) { Work->Release();Work->EndEquipmentUse(true); }
             if (UPlayerLoadoutComponent* Loadout = Pawn->FindComponentByClass<UPlayerLoadoutComponent>()) Loadout->StopActions();
             if (UBuildingRepairComponent* Repair = Pawn->FindComponentByClass<UBuildingRepairComponent>()) Repair->StopRepair();
         }

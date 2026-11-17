@@ -49,11 +49,14 @@ protected:
 private:
     UFUNCTION() void HandleDefeat();
     UFUNCTION() void FinishNightTransition();
+    UFUNCTION() void FinishDayTransition();
+    UFUNCTION() void HandleTransitionFinished();
     UFUNCTION() void CheckNightCompletion();
     UFUNCTION() void OnNightZombieDestroyed(AActor* Actor);
     void LockTransitionInput(bool bLocked);
     void BindDefeatConditions();
     void ApplyPhase();
+    bool bTransitionToNight=true;
     FTimerHandle PhaseTimer;
     FTimerHandle RetryTimer;
     UPROPERTY() TObjectPtr<class ADayNightDirector> Director;

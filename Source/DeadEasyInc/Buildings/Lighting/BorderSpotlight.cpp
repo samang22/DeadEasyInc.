@@ -38,7 +38,7 @@ void ABorderSpotlight::BeginPlay()
     {
         Director = *It;
         It->NightLightComponents.AddUnique(Spotlight);
-        Spotlight->SetVisibility(It->TransitionAlpha >= .35f);
+        Spotlight->SetVisibility(It->AreNightLightsOn());
         return;
     }
     // Maps without a lighting director still follow the gameplay phase.
