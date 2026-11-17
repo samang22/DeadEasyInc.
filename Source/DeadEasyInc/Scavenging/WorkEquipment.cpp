@@ -5,6 +5,9 @@ AWorkEquipment::AWorkEquipment()
 {
     RootComponent=CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
     Fork=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Fork"));Fork->SetupAttachment(RootComponent);
+    Hammer=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Hammer"));Hammer->SetupAttachment(RootComponent);
+    Hammer->SetRelativeLocation(FVector(45.f,22.f,-20.f));
+    Hammer->SetCollisionEnabled(ECollisionEnabled::NoCollision);Hammer->SetCanEverAffectNavigation(false);
     Pack=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Pack"));Pack->SetupAttachment(RootComponent);
     Cart=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Cart"));Cart->SetupAttachment(RootComponent);
     CargoRoot=CreateDefaultSubobject<USceneComponent>(TEXT("CargoRoot"));CargoRoot->SetupAttachment(RootComponent);
@@ -20,6 +23,7 @@ AWorkEquipment::AWorkEquipment()
 }
 void AWorkEquipment::Refresh(EWorkTool Tool,bool bActive,bool bHandcart)
 {
+    Hammer->SetVisibility(bActive && Tool==EWorkTool::Repair);
     Fork->SetVisibility(bActive && Tool!=EWorkTool::Repair);
     for (UStaticMeshComponent* Part : ForkParts) Part->SetVisibility(bActive && Tool!=EWorkTool::Repair);
     for (UStaticMeshComponent* Part : CartParts) Part->SetVisibility(false);

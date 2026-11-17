@@ -127,8 +127,8 @@ void ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout)
         DrawText(TEXT("F - Open station"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-100,Canvas->SizeY*.5f+85);
     if (!Loadout->bMenuOpen)
         if (const auto* Work=Loadout->GetOwner()->FindComponentByClass<UCorpseHandlingComponent>())
-            if (Work->IsPushing() || Work->GetUsableHandcart())
-                DrawText(Work->IsPushing() ? TEXT("F - 손수레 놓기") : TEXT("F - 손수레 잡기"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-90,Canvas->SizeY*.5f+110,nullptr,1.2f);
+            if (Work->IsPushing() || Work->GetUsableEquipment())
+                DrawText(Work->IsPushing() ? TEXT("F - 장비 사용 종료") : TEXT("F - 장비 사용"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-90,Canvas->SizeY*.5f+110,nullptr,1.2f);
     if (!Loadout->bMenuOpen && Loadout->GetFocusedGateSwitch())
         DrawText(TEXT("F - 문 닫고 야간 근무 시작"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-140,Canvas->SizeY*.5f+85);
     if (GetWorld()->GetTimeSeconds()-Loadout->LastHitTime < .15f)

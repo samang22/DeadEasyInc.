@@ -32,7 +32,7 @@ TArray<ABorderZombie*> UCorpseFeedComponent::Advance(float Dt,APawn* Pawn,const 
     for (AActor* Candidate : Candidates)
     {
         auto* Corpse=Cast<ABorderZombie>(Candidate);
-        if (!IsValid(Corpse) || !Corpse->bDead || Corpse->IsActorBeingDestroyed() || Corpse->ProcessingOwner.IsValid()) continue;
+        if (!IsValid(Corpse) || !Corpse->bDead || Corpse->IsActorBeingDestroyed() || Corpse->ProcessingOwner.IsValid() || Corpse->IntakeOwner.IsValid()) continue;
         Corpse->ProcessingOwner=Processor.Get();ClaimedCorpses.Add(Corpse);
         if (Corpse->Carrier.IsValid()) Corpse->Carrier->DetachCorpse(Corpse);
         if (Work) Work->DetachCorpse(Corpse);

@@ -31,7 +31,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tracked Drive", meta=(ClampMin="0.01", ToolTip="Min allowed ground normal Z."))
     float MinGroundNormalZ = 0.65f;
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Tracked Drive", meta=(ClampMin="0"))
-    float GroundClearance = 30.f;
+    float GroundClearance = 0.f;
 
     void Configure(UBoxComponent* InRootCollision);
     void SetInput(float Forward, float Turn);

@@ -42,6 +42,7 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Zombie")
     bool bDead = false;
     TWeakObjectPtr<class AHandcart> Carrier;
+    TWeakObjectPtr<class UTractorIntakeComponent> IntakeOwner; // Reservation while pulling or stored.
     TWeakObjectPtr<class ACorpseProcessor> ProcessingOwner;
     TWeakObjectPtr<class UCorpseHandlingComponent> HandlingOwner;
     int32 TransportSlot=INDEX_NONE;

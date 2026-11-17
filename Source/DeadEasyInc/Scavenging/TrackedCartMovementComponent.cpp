@@ -46,7 +46,7 @@ bool UTrackedCartMovementComponent::SnapToGround()
     if (!bFound || Ground.ImpactNormal.Z < MinGroundNormalZ) return false;
 
     const float HalfHeight = RootCollision->GetScaledBoxExtent().Z;
-    return Vehicle->SetActorLocation(FVector(Origin.X, Origin.Y, Ground.ImpactPoint.Z + HalfHeight + GroundClearance), false);
+    return Vehicle->SetActorLocation(FVector(Origin.X, Origin.Y, Ground.ImpactPoint.Z + HalfHeight + FMath::Max(GroundClearance, 1.f)), false);
 }
 
 void UTrackedCartMovementComponent::Advance(float Dt, const AActor* Driver)
@@ -205,7 +205,7 @@ void UTrackedCartMovementComponent::Advance(float Dt, const AActor* Driver)
     Destination.Z =
         Ground.ImpactPoint.Z +
         RootCollision->GetScaledBoxExtent().Z +
-        GroundClearance;
+        FMath::Max(GroundClearance, 1.f); // Keep ground contact out of the blocking overlap query.
 
     if (bDebugLog)
     {

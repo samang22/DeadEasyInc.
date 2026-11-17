@@ -25,7 +25,11 @@ public:
     void RefreshVisuals();
     class AHandcart* EnsureHandcart();
     bool IsPushing() const;
-    class AElectricCart* GetMountedVehicle() const;
+    class AElectricCart* GetMountedVehicle() const; // Legacy compatibility only.
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Transient,Category="Equipment") TWeakObjectPtr<AActor> CurrentEquipment;
+    class IUsableEquipment* GetUsedEquipment() const;
+    AActor* GetUsableEquipment() const;
+    bool EndEquipmentUse(bool bForce = false);
     class AHandcart* GetUsableHandcart() const;
     void StopPushing();
     void DetachCorpse(class ABorderZombie* Corpse);

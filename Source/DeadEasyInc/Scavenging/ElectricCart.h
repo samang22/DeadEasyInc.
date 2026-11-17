@@ -32,15 +32,14 @@ public:
     virtual void AdvanceDriverMovement(float Dt) override;
     virtual void UpdateWheelVisuals() override {}
 
-    void SetDriveInput(float Forward, float Turn);
+    virtual bool IsDirectlyDriven() const override { return true; }
+    virtual bool EndUse(APawn* User, bool bForce = false) override;
+    virtual void SetDriveInput(float Forward, float Turn) override;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Electric Cart")
+    TObjectPtr<class UEquipmentMountComponent> MountState;
     bool IsMountedBy(const AActor* Player) const { return Driver && Driver == Player; }
 
 protected:
     virtual void BeginPlay() override;
 
-private:
-    bool FindExitPosition(const ACharacter* Character, FVector& OutLocation) const;
-    TWeakObjectPtr<ACharacter> MountedCharacter;
-    EMovementMode PreviousMovementMode = MOVE_Walking;
-    ECollisionEnabled::Type PreviousCapsuleCollision = ECollisionEnabled::QueryAndPhysics;
 };

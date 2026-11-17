@@ -3,7 +3,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 #include "Progression/PlayerLoadoutComponent.h"
 #include "Scavenging/CorpseHandlingComponent.h"
-#include "Scavenging/ElectricCart.h"
+#include "Scavenging/UsableEquipment.h"
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
@@ -138,15 +138,12 @@ void ADeadEasyIncCharacter::DoAim(float Yaw, float Pitch)
 
 void ADeadEasyIncCharacter::DoMove(float Right, float Forward)
 {
-    if (AElectricCart* Vehicle = CorpseHandling ? CorpseHandling->GetMountedVehicle() : nullptr)
-    {
-    	UE_LOG(LogTemp, Warning,
-	TEXT("Vehicle Input: Forward=%.2f Right=%.2f"),
-	Forward, Right);
-    	
-        Vehicle->SetDriveInput(Forward, Right);
-        return;
-    }
+    if (auto* Use=CorpseHandling ? CorpseHandling->GetUsedEquipment() : nullptr)
+        if (Use->IsDirectlyDriven())
+        {
+            Use->SetDriveInput(Forward,Right);
+            return;
+        }
 	if (GetController())
 	{
 		// pass the move inputs
@@ -157,13 +154,14 @@ void ADeadEasyIncCharacter::DoMove(float Right, float Forward)
 
 void ADeadEasyIncCharacter::StopVehicleMovementInput()
 {
-    if (AElectricCart* Vehicle = CorpseHandling ? CorpseHandling->GetMountedVehicle() : nullptr)
-        Vehicle->SetDriveInput(0.f, 0.f);
+    if (auto* Use=CorpseHandling ? CorpseHandling->GetUsedEquipment() : nullptr)
+        if (Use->IsDirectlyDriven()) Use->SetDriveInput(0.f,0.f);
 }
 
 void ADeadEasyIncCharacter::DoJumpStart()
 {
-    if (CorpseHandling && CorpseHandling->GetMountedVehicle()) return;
+    if (auto* Use=CorpseHandling ? CorpseHandling->GetUsedEquipment() : nullptr)
+        if (Use->IsDirectlyDriven()) return;
     if (GetController() && GetController()->IsMoveInputIgnored()) return;
 	// pass Jump to the character
 	Jump();

@@ -29,7 +29,7 @@ void ABorderZombie::ApplyCorpseCollision()
 void ABorderZombie::TickCorpseInfluences(float Dt)
 {
     const auto* Mode=GetWorld()->GetAuthGameMode<ABorderGameMode>();
-    if ((Mode && (Mode->bGameOver || Mode->bTransitioning)) || HandlingOwner.IsValid() || ProcessingOwner.IsValid()) return;
+    if ((Mode && (Mode->bGameOver || Mode->bTransitioning)) || HandlingOwner.IsValid() || ProcessingOwner.IsValid() || IntakeOwner.IsValid()) return;
     const float Now=GetWorld()->GetTimeSeconds();if (Now<NextCorpseContactTime) return;
     NextCorpseContactTime=Now+.08f;
     FCollisionObjectQueryParams Objects;

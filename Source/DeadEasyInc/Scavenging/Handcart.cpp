@@ -35,6 +35,8 @@ AHandcart::AHandcart()
     // 이동 가능한 액터
     Collision->SetMobility(EComponentMobility::Movable);    
     GrabTarget=CreateDefaultSubobject<UBoxComponent>(TEXT("GrabTarget"));GrabTarget->SetupAttachment(RootComponent);
+    InteractionArea=GrabTarget; // Alias, not a second collider: preserve existing BP transforms.
+    GrabTarget->SetGenerateOverlapEvents(false);
     GrabTarget->SetRelativeLocation(FVector(-160,0,20));GrabTarget->SetBoxExtent(FVector(45,70,25));
     GrabTarget->SetCollisionEnabled(ECollisionEnabled::QueryOnly);GrabTarget->SetCollisionResponseToAllChannels(ECR_Ignore);
     GrabTarget->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);GrabTarget->SetCanEverAffectNavigation(false);
@@ -101,6 +103,7 @@ void AHandcart::PostLoad()
 void AHandcart::BeginPlay()
 {
     Super::BeginPlay();
+    InteractionArea=GrabTarget;
     if (!Settings) Settings=GetClass()->GetDefaultObject<AHandcart>()->Settings;
     CargoStorage->OnDetached.AddUObject(this,&AHandcart::HandleCargoDetached);
     CargoStorage->OnAttached.AddUObject(this,&AHandcart::HandleCargoAttached);
@@ -114,13 +117,26 @@ void AHandcart::BeginPlay()
     Collision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     Collision->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
     GrabTarget->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+    GrabTarget->SetCollisionResponseToAllChannels(ECR_Ignore);
     GrabTarget->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
+    GrabTarget->SetGenerateOverlapEvents(false);
 }
 bool AHandcart::SnapToGround()
 {
     if (!Settings) Settings=GetClass()->GetDefaultObject<AHandcart>()->Settings;
     CartMovement->Configure(Settings,Collision,WheelAxle);
     return CartMovement->SnapToGround(Driver);
+}
+bool AHandcart::CanInteract(APawn* User) const
+{
+    return IsValid(User) && !User->ActorHasTag(TEXT("Dead")) && !Driver &&
+        FVector::DistSquared(User->GetActorLocation(), GrabTarget->GetComponentLocation()) <= FMath::Square(450.f);
+}
+bool AHandcart::IsUsedBy(const APawn* User) const { return User && Driver==User; }
+bool AHandcart::EndUse(APawn* User, bool bForce)
+{
+    if (Driver && Driver!=User) return false;
+    StopPush();return true;
 }
 bool AHandcart::StartPush(APawn* Player)
 {
@@ -140,7 +156,7 @@ void AHandcart::StopPush()
 int32 AHandcart::CargoCount() const { return CargoStorage->CargoCount(); }
 bool AHandcart::LoadCorpse(ABorderZombie* Corpse,int32 Slot)
 {
-    if (!IsValid(Corpse) || !Corpse->bDead || Corpse->ProcessingOwner.IsValid()) return false;
+    if (!IsValid(Corpse) || !Corpse->bDead || Corpse->ProcessingOwner.IsValid() || Corpse->IntakeOwner.IsValid()) return false;
     if (Corpse->Carrier.IsValid()) Corpse->Carrier->DetachCorpse(Corpse);
     CargoStorage->Configure(Settings,CargoVolume);
     int32 AssignedSlot=INDEX_NONE;
@@ -178,7 +194,7 @@ void AHandcart::Tick(float Dt)
     if (Driver)
     {
         const bool bInvalidState =
-            Driver->ActorHasTag(TEXT("Dead")) ||
+            !IsValid(Driver) || Driver->IsActorBeingDestroyed() || Driver->ActorHasTag(TEXT("Dead")) ||
             (Mode && (
                 Mode->bGameOver ||
                 Mode->bTransitioning ||

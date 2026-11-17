@@ -26,8 +26,9 @@ void UCorpseCargoComponent::Configure(UScavengingSettings* InSettings,UBoxCompon
 }
 bool UCorpseCargoComponent::IsInside(ABorderZombie* Corpse,float Margin) const
 {
-    if (!Volume.IsValid() || !IsValid(Corpse) || !Corpse->bDead || Corpse->ProcessingOwner.IsValid() || Corpse->HandlingOwner.IsValid()) return false;
-    const FName Bone=Settings ? Settings->GrabBone : FName(TEXT("pelvis"));
+    if (!Volume.IsValid() || !IsValid(Corpse) || !Corpse->bDead || Corpse->ProcessingOwner.IsValid() || Corpse->HandlingOwner.IsValid() || Corpse->IntakeOwner.IsValid()) return false;
+    const FName ConfiguredBone=Settings ? Settings->GrabBone : FName(TEXT("pelvis"));
+    const FName Bone=Corpse->GetMesh()->GetBoneIndex(ConfiguredBone)!=INDEX_NONE ? ConfiguredBone : Corpse->CorpsePushBone;
     const FBodyInstance* Body=Corpse->GetMesh()->GetBodyInstance(Bone);
     const FVector Center=Body ? Body->GetUnrealWorldTransform().GetLocation() : Corpse->GetMesh()->GetSocketLocation(Bone);
     const FVector P=Volume->GetComponentTransform().InverseTransformPosition(Center);

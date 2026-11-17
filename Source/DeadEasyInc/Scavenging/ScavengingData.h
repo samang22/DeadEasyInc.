@@ -4,7 +4,7 @@
 #include "ScavengingData.generated.h"
 
 UENUM(BlueprintType)
-enum class EWorkTool : uint8 { Fork, Repair, Cart };
+enum class EWorkTool : uint8 { Fork, Repair UMETA(DisplayName="Hammer"), Cart };
 
 USTRUCT(BlueprintType)
 struct FCorpseCargo

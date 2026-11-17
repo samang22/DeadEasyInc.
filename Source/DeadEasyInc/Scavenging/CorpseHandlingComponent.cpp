@@ -16,7 +16,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Scavenging/Handcart.h"
-#include "Scavenging/ElectricCart.h"
+#include "Scavenging/ElectricCart.h" // Legacy GetMountedVehicle API only.
+#include "Scavenging/UsableEquipment.h"
+#include "Engine/OverlapResult.h"
 #include "Components/BoxComponent.h"
 #include "EngineUtils.h"
 #include "Interaction/GateSwitch.h"
@@ -36,14 +38,18 @@ void UCorpseHandlingComponent::BeginPlay()
         if (Equipment)
         {
             Equipment->AttachToActor(GetOwner(),FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-            if (auto* Camera=GetOwner()->FindComponentByClass<UCameraComponent>()) Equipment->Fork->AttachToComponent(Camera,FAttachmentTransformRules::KeepRelativeTransform);
+            if (auto* Camera=GetOwner()->FindComponentByClass<UCameraComponent>())
+            {
+                Equipment->Fork->AttachToComponent(Camera,FAttachmentTransformRules::KeepRelativeTransform);
+                Equipment->Hammer->AttachToComponent(Camera,FAttachmentTransformRules::KeepRelativeTransform);
+            }
         }
     }
     RefreshVisuals();
 }
 void UCorpseHandlingComponent::EndPlay(const EEndPlayReason::Type Reason)
 {
-    Release();if (IsPushing()) Handcart->StopPush();if (Equipment) Equipment->Destroy();if (Handle) Handle->DestroyComponent();Super::EndPlay(Reason);
+    Release();EndEquipmentUse(true);if (Equipment) Equipment->Destroy();if (Handle) Handle->DestroyComponent();Super::EndPlay(Reason);
 }
 bool UCorpseHandlingComponent::CanWork() const
 {
@@ -57,7 +63,8 @@ int32 UCorpseHandlingComponent::Capacity() const
 }
 void UCorpseHandlingComponent::SetWorkActive(bool Active)
 {
-    StopPushing();
+    if (!EndEquipmentUse())
+    { if (Loadout()) Loadout()->Notify(TEXT("하차할 공간이 없습니다."),true);return; }
     Release();bActive=Active;RefreshVisuals();
 }
 void UCorpseHandlingComponent::Select() { SetWorkActive(true); }
@@ -83,15 +90,18 @@ AActor* UCorpseHandlingComponent::Focus(FHitResult& Hit) const
 }
 void UCorpseHandlingComponent::Primary()
 {
-    if (IsPushing() || !bActive || !CanWork() || Tool==EWorkTool::Repair || GetWorld()->GetTimeSeconds()<NextUseTime) return;
+    if (auto* Use=GetUsedEquipment())
+    { if (CanWork()) Use->ExecuteSecondaryAction();return; }
+    if (!bActive || !CanWork() || Tool==EWorkTool::Repair || GetWorld()->GetTimeSeconds()<NextUseTime) return;
     NextUseTime=GetWorld()->GetTimeSeconds()+.2f;
     if (Held) { Release();return; }
     FHitResult Hit;auto* Corpse=Cast<ABorderZombie>(Focus(Hit));
-    if (!Corpse || !Corpse->bDead || Corpse->IsActorBeingDestroyed() || Corpse->ProcessingOwner.IsValid()) return;
+    if (!Corpse || !Corpse->bDead || Corpse->IsActorBeingDestroyed() || Corpse->ProcessingOwner.IsValid() || Corpse->IntakeOwner.IsValid()) return;
     Corpse->HandlingOwner=this;
     if (Corpse->Carrier.IsValid()) Corpse->Carrier->DetachCorpse(Corpse);
     Held=Corpse;
     FName Bone=Settings ? Settings->GrabBone : FName(TEXT("pelvis"));
+    if (Corpse->GetMesh()->GetBoneIndex(Bone)==INDEX_NONE) Bone=Corpse->CorpsePushBone;
     if (!Corpse->GetMesh()->GetBodyInstance(Bone)) Bone=Hit.BoneName;
     Corpse->GetMesh()->SetCollisionResponseToChannel(ECC_Pawn,ECR_Ignore);
     Handle->GrabComponentAtLocation(Corpse->GetMesh(),Bone,Corpse->GetMesh()->GetSocketLocation(Bone));
@@ -114,21 +124,34 @@ AHandcart* UCorpseHandlingComponent::EnsureHandcart()
     Handcart=GetWorld()->SpawnActor<AHandcart>(Settings->HandcartClass,Position,GetOwner()->GetActorRotation(),Params);
     if (Handcart) Handcart->SnapToGround();return Handcart;
 }
-bool UCorpseHandlingComponent::IsPushing() const { return IsValid(Handcart) && Handcart->Driver==GetOwner(); }
+IUsableEquipment* UCorpseHandlingComponent::GetUsedEquipment() const
+{
+    AActor* Actor=CurrentEquipment.Get();
+    if (!IsValid(Actor) || Actor->IsActorBeingDestroyed()) return nullptr;
+    auto* Use=Cast<IUsableEquipment>(Actor);
+    return Use && Use->IsUsedBy(Cast<APawn>(GetOwner())) ? Use : nullptr;
+}
+bool UCorpseHandlingComponent::IsPushing() const { return GetUsedEquipment()!=nullptr; }
 AElectricCart* UCorpseHandlingComponent::GetMountedVehicle() const
 {
-    return IsPushing() ? Cast<AElectricCart>(Handcart) : nullptr;
+    return IsPushing() ? Cast<AElectricCart>(CurrentEquipment.Get()) : nullptr;
 }
-void UCorpseHandlingComponent::StopPushing()
+bool UCorpseHandlingComponent::EndEquipmentUse(bool bForce)
 {
-    if (IsPushing()) Handcart->StopPush();
+    if (auto* Use=GetUsedEquipment())
+        if (!Use->EndUse(Cast<APawn>(GetOwner()),bForce)) return false;
+    CurrentEquipment.Reset();
+    if (!GetOwner()->IsActorBeingDestroyed() && GetWorld() && !GetWorld()->bIsTearingDown)
+        if (Loadout()) Loadout()->RefreshWeapon();
+    return true;
 }
+void UCorpseHandlingComponent::StopPushing() { EndEquipmentUse(true); }
 void UCorpseHandlingComponent::Store()
 {
     if (!CanWork() || !Loadout()) return;
     if (IsPushing())
     {
-        if (!Handcart->Dump()) Loadout()->Notify(TEXT("분류기 투입구 앞에 수레를 가까이 대고 우클릭하세요."),true);
+        if (!GetUsedEquipment()->ExecutePrimaryAction()) Loadout()->Notify(TEXT("장비를 멈춘 뒤 다시 시도해 주세요."),true);
         return;
     }
     Loadout()->Notify(TEXT("시체를 들어 카트 위에 좌클릭으로 놓아주세요. 적재는 자동 감지됩니다."));
@@ -154,46 +177,70 @@ void UCorpseHandlingComponent::RefreshVisuals()
 }
 bool UCorpseHandlingComponent::Interact()
 {
+    if (IsPushing())
+    {
+        if (!EndEquipmentUse()) { if (Loadout()) Loadout()->Notify(TEXT("하차할 공간이 없습니다."),true); }
+        else RefreshVisuals();
+        return true;
+    }
     if (!CanWork()) return false;
-    if (IsPushing()) { StopPushing();RefreshVisuals();return true; }
-    FHitResult Hit;AActor* Target=Focus(Hit);
-    if (auto* Cart=GetUsableHandcart())
+    if (AActor* Target=GetUsableEquipment())
     {
         if (Held) { Loadout()->Notify(TEXT("시체를 먼저 내려놓아 주세요."),true);return true; }
-        Handcart=Cart;
-        if (!Cart->StartPush(Cast<APawn>(GetOwner()))) { Loadout()->Notify(TEXT("수레 가까이에서 손수레 쪽을 바라보고 잡아주세요."),true);return true; }
+        auto* Use=Cast<IUsableEquipment>(Target);
+        if (!Use || !Use->BeginUse(Cast<APawn>(GetOwner())))
+        { Loadout()->Notify(TEXT("장비 접근 위치에서 다시 시도해 주세요."),true);return true; }
+        CurrentEquipment=Target;
+        if (auto* Cart=Cast<AHandcart>(Target)) Handcart=Cart; // Cargo API compatibility, not use state.
         bActive=false;RefreshVisuals();Loadout()->RefreshWeapon();return true;
     }
-    if (!Cast<ACorpseProcessor>(Target)) return false;
+    FHitResult Hit;
+    if (!Cast<ACorpseProcessor>(Focus(Hit))) return false;
     Loadout()->Notify(TEXT("시체를 집어 투입구에 넣거나, 수레를 잡고 앞에서 우클릭해 비우세요."));return true;
 }
 AHandcart* UCorpseHandlingComponent::GetUsableHandcart() const
 {
+    return Cast<AHandcart>(GetUsableEquipment());
+}
+AActor* UCorpseHandlingComponent::GetUsableEquipment() const
+{
     if (!CanWork() || IsPushing()) return nullptr;
-    const auto* Pawn=Cast<APawn>(GetOwner());
+    auto* Pawn=Cast<APawn>(GetOwner());
     const auto* Player=Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
     if (!Player) return nullptr;
     FHitResult FocusHit;AActor* Focused=Focus(FocusHit);
-    if (auto* Direct=Cast<AHandcart>(Focused))
-        if (!Direct->Driver && FVector::DistSquared2D(Direct->GetActorLocation(),Pawn->GetActorLocation())<=FMath::Square(450.f)) return Direct;
-    // Explicitly aiming at a station or switch keeps that object's interaction.
-    if (Focused && (Focused->IsA<ABuilding>() || Focused->IsA<AGateSwitch>())) return nullptr;
     FVector Eye;FRotator View;Player->GetPlayerViewPoint(Eye,View);
-    const FVector Aim=View.Vector().GetSafeNormal2D();
     const float Reach=Settings ? Settings->CartInteractionReach : 350.f;
-    AHandcart* Best=nullptr;float BestDistance=Reach;
-    for (TActorIterator<AHandcart> It(GetWorld());It;++It)
+    auto Eligible=[&](AActor* Actor)
     {
-        if (It->Driver || It->IsActorBeingDestroyed() || FVector::DistSquared2D(It->GetActorLocation(),Pawn->GetActorLocation())>FMath::Square(450.f)) continue;
-        const FVector Grab=It->GrabTarget->GetComponentLocation();
-        const float Distance=FVector::Dist2D(Eye,Grab);
-        if (Distance>BestDistance || FVector::DotProduct((It->GetActorLocation()-Eye).GetSafeNormal2D(),Aim)<.6f) continue;
-        FHitResult Block;FCollisionQueryParams Params(SCENE_QUERY_STAT(CartInteraction),false,Pawn);
-        if (Equipment) Params.AddIgnoredActor(Equipment);if (Held) Params.AddIgnoredActor(Held);
-        const bool Hit=GetWorld()->LineTraceSingleByChannel(Block,Eye,Grab,ECC_Visibility,Params);
+        auto* Use=Cast<IUsableEquipment>(Actor);
+        return IsValid(Actor) && !Actor->IsActorBeingDestroyed() && Use && Use->CanInteract(Pawn) &&
+            Use->GetInteractionArea() && FVector::DistSquared(Eye,Use->GetInteractionArea()->GetComponentLocation())<=FMath::Square(Reach);
+    };
+    // A root collision hit belongs to the same equipment; do not require hitting its small area exactly.
+    if (Eligible(Focused)) return Focused;
+    if (Focused && (Focused->IsA<ABuilding>() || Focused->IsA<AGateSwitch>())) return nullptr;
+    TArray<FOverlapResult> Nearby;
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(EquipmentInteraction),false,Pawn);
+    if (Equipment) Params.AddIgnoredActor(Equipment);
+    if (Held) Params.AddIgnoredActor(Held);
+    GetWorld()->OverlapMultiByObjectType(Nearby,Eye,FQuat::Identity,
+        FCollisionObjectQueryParams::AllObjects,FCollisionShape::MakeSphere(Reach),Params);
+    const FVector Aim=View.Vector().GetSafeNormal2D();
+    AActor* Best=nullptr;float BestDistance=Reach;
+    for (const FOverlapResult& Overlap : Nearby)
+    {
+        AActor* Actor=Overlap.GetActor();
+        if (!Eligible(Actor)) continue;
+        auto* Use=Cast<IUsableEquipment>(Actor);
+        const FVector Grab=Use->GetInteractionArea()->GetComponentLocation();
+        const float Distance=FVector::Dist(Eye,Grab);
+        if (Distance>BestDistance || FVector::DotProduct((Grab-Eye).GetSafeNormal2D(),Aim)<.6f) continue;
+        FHitResult Block;
+        const bool bHit=GetWorld()->LineTraceSingleByChannel(Block,Eye,Grab,ECC_Visibility,Params);
         const auto* Body=Cast<ABorderZombie>(Block.GetActor());
-        if (Hit && Block.GetActor()!=*It && !(Body && Body->Carrier.Get()==*It)) continue;
-        Best=*It;BestDistance=Distance;
+        if (bHit && Block.GetActor()!=Actor && !(Body && Body->Carrier.Get()==Actor)) continue;
+        Best=Actor;BestDistance=Distance;
     }
     return Best;
 }
@@ -223,15 +270,25 @@ void UCorpseHandlingComponent::RecoverLegacyCargo()
 FString UCorpseHandlingComponent::Hint() const
 {
     if (!Loadout()) return FString();
-    if (IsPushing()) return FString::Printf(TEXT("적재 시체 %d구 | F: 손수레 놓기 | 이동: 수레 밀기 | 우클릭: 끝판 개폐·비우기"),CargoCount());
+    if (const auto* Use=GetUsedEquipment())
+    {
+        const FString EquipmentHint=Use->GetUseHint();
+        if (!EquipmentHint.IsEmpty()) return EquipmentHint;
+        return Use->IsDirectlyDriven() ? TEXT("F: 하차 | WASD: 장비 조종 | 우클릭: 배출") :
+            FString::Printf(TEXT("적재 시체 %d구 | F: 손수레 놓기 | 이동: 수레 밀기 | 우클릭: 끝판 개폐·비우기"),CargoCount());
+    }
     if (bActive)
-        return FString::Printf(TEXT("%s | 적재 시체 %d구 | 좌클릭: 집기/놓기 | F: 수레 잡기/놓기"),Tool==EWorkTool::Repair ? TEXT("Repair tool: hold E") : TEXT("Corpse fork"),CargoCount());
+        return FString::Printf(TEXT("%s | 적재 시체 %d구 | 좌클릭: 집기/놓기 | F: 수레 잡기/놓기"),Tool==EWorkTool::Repair ? TEXT("Hammer: hold E to repair") : TEXT("Corpse fork"),CargoCount());
     return FString::Printf(TEXT("적재 시체 %d구 | 3 Work tools | F grab/release cart | U building upgrade"),CargoCount());
 }
 void UCorpseHandlingComponent::TickComponent(float Dt,ELevelTick Type,FActorComponentTickFunction* Tick)
 {
     Super::TickComponent(Dt,Type,Tick);
-    if (!CanWork()) { if (Held) Release();StopPushing();return; }
+    if (!CurrentEquipment.IsExplicitlyNull() && !GetUsedEquipment())
+    {
+        CurrentEquipment.Reset();RefreshVisuals();if (Loadout()) Loadout()->RefreshWeapon();
+    }
+    if (!CanWork()) { if (Held) Release();if (IsPushing()) StopPushing();return; }
     if (Held && (!IsValid(Held) || Held->IsActorBeingDestroyed())) { Release(); return; }
     if (Held && Handle)
     {
@@ -239,7 +296,9 @@ void UCorpseHandlingComponent::TickComponent(float Dt,ELevelTick Type,FActorComp
         if (!Player) { Release();return; }
         FVector Eye;FRotator View;Player->GetPlayerViewPoint(Eye,View);
         const FVector Target=Eye+View.Vector()*(Settings ? Settings->HoldDistance : 180.f)-FVector(0,0,35);
-        if (FVector::DistSquared(Held->GetMesh()->GetSocketLocation(Settings ? Settings->GrabBone : FName(TEXT("pelvis"))),Target)>FMath::Square(650.f)) Release();
+        const FName ConfiguredBone=Settings ? Settings->GrabBone : FName(TEXT("pelvis"));
+        const FName Bone=Held->GetMesh()->GetBoneIndex(ConfiguredBone)!=INDEX_NONE ? ConfiguredBone : Held->CorpsePushBone;
+        if (FVector::DistSquared(Held->GetMesh()->GetSocketLocation(Bone),Target)>FMath::Square(650.f)) Release();
         else Handle->SetTargetLocation(Target);
     }
 }

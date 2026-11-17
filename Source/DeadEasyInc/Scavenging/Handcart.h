@@ -1,10 +1,11 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Scavenging/UsableEquipment.h"
 #include "Handcart.generated.h"
 
 UCLASS()
-class DEADEASYINC_API AHandcart : public AActor
+class DEADEASYINC_API AHandcart : public AActor, public IUsableEquipment
 {
     GENERATED_BODY()
 public:
@@ -29,6 +30,15 @@ public:
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UCorpseCargoComponent> CargoStorage;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UHandcartMovementComponent> CartMovement;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UHandcartDischargeComponent> Discharge;
+    UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Transient,Category="Interaction") TObjectPtr<class UBoxComponent> InteractionArea;
+    virtual bool CanInteract(APawn* User) const override;
+    virtual bool BeginUse(APawn* User) override { return StartPush(User); }
+    virtual bool EndUse(APawn* User, bool bForce = false) override;
+    virtual bool IsUsedBy(const APawn* User) const override;
+    virtual bool IsDirectlyDriven() const override { return false; }
+    virtual void SetDriveInput(float Forward, float Right) override {}
+    virtual bool ExecutePrimaryAction() override { return Dump(); }
+    virtual UBoxComponent* GetInteractionArea() const override { return GrabTarget; }
     virtual bool StartPush(APawn* Player);
     virtual void StopPush();
     bool LoadCorpse(class ABorderZombie* Corpse,int32 Slot=INDEX_NONE);
