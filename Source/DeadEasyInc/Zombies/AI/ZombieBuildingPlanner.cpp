@@ -76,7 +76,7 @@ bool ABorderZombie::PlanRoute(AActor* Goal,const FVector& Destination,TArray<FVe
 {
     const FVector Start=GetNavAgentLocation();
     if (!BuildSegment(Start,Destination,Points)) return false;
-    const bool bDirectValid=InspectRoute(Points,Blocker) && !(Blocker && Blocker->IsA<ACentralBoiler>() && Goal!=Blocker);
+    const bool bDirectValid=InspectRoute(Points,Blocker);
     if (bDirectValid && !Blocker) return true;
     const float DirectLength=RouteLength(Points);
     struct FPortalCandidate { FBorderOpening Opening; double Score; };
@@ -112,52 +112,29 @@ void ABorderZombie::ChooseBuildingGoal()
     UBuildingTargetRegistry* Registry=GetWorld()->GetSubsystem<UBuildingTargetRegistry>();
     Registry->Release(this);
     TArray<ABuilding*> Candidates=Registry->GetTargets();
-    const bool bHasInterior=Candidates.ContainsByPredicate([](ABuilding* A){return !A->IsA<ABorderWall>();});
-    Candidates.RemoveAll([&](ABuilding* A)
-    {
-        if (bHasInterior && A->IsA<ABorderWall>()) return true;
-        return !A->IsA<ACentralBoiler>() && !A->IsA<ABorderWall>() &&
-            FVector::Dist2D(GetActorLocation(),A->GetActorLocation())>(Settings ? Settings->MaxObjectiveDistance : 6000.f);
-    });
-    Candidates.Sort([&](const ABuilding& A,const ABuilding& B)
-    {
-        const int32 PA=A.Settings ? A.Settings->ZombieTargetPriority : 100;
-        const int32 PB=B.Settings ? B.Settings->ZombieTargetPriority : 100;
-        return PA!=PB ? PA>PB : FVector::DistSquared2D(GetActorLocation(),A.GetActorLocation())<FVector::DistSquared2D(GetActorLocation(),B.GetActorLocation());
-    });
-    ABuilding* BestGoal=nullptr; ABuilding* BestBlocker=nullptr;
-    int32 BestTier=MAX_int32,BestPriority=MIN_int32;
-    bool bBestBlocked=true; float BestLength=TNumericLimits<float>::Max();
+    ABuilding* BestGoal=nullptr;ABuilding* BestBlocker=nullptr;
+    float BestLength=TNumericLimits<float>::Max();
     TArray<FVector> BestRoute;
+    // Anything already attackable is preferred to travelling to another building.
     for (ABuilding* Candidate : Candidates)
-    {
-        TArray<FVector> Path; ABuilding* Obstacle=nullptr;
-        if (!PlanRoute(Candidate,Registry->ClaimApproach(Candidate,this),Path,Obstacle)) continue;
-        const int32 Tier=Candidate->IsA<ACentralBoiler>() ? 2 : Candidate->IsA<ABorderWall>() ? 3 : 1;
-        const int32 Priority=Candidate->Settings ? Candidate->Settings->ZombieTargetPriority : 100;
-        const bool bBlocked=Obstacle && Obstacle!=Candidate;
-        const float Length=RouteLength(Path);
-        if (!BestGoal || Tier<BestTier || (Tier==BestTier &&
-            ((!bBlocked && bBestBlocked) || (bBlocked==bBestBlocked && (Priority>BestPriority || (Priority==BestPriority && Length<BestLength))))))
+        if (CanReach(Candidate,AttackReach))
         {
-            BestGoal=Candidate;BestBlocker=Obstacle;BestTier=Tier;BestPriority=Priority;bBestBlocked=bBlocked;BestLength=Length;BestRoute=MoveTemp(Path);
+            const float Distance=FVector::DistSquared(GetActorLocation(),TargetPoint(Candidate));
+            if (!BestGoal || Distance<BestLength) { BestGoal=Candidate;BestLength=Distance; }
         }
-    }
-    // Interior objectives remain preferred. A disconnected navmesh must not leave
-    // the zombie idle when the border itself can be attacked from this side.
     if (!BestGoal)
     {
-        for (ABuilding* Candidate : Registry->GetTargets())
+        Candidates.Sort([this](const ABuilding& A,const ABuilding& B)
         {
-            if (!Candidate->IsA<ABorderWall>()) continue;
-            TArray<FVector> Path; ABuilding* Obstacle=nullptr;
-            const bool bInReach=CanReach(Candidate,AttackReach);
-            if (!bInReach && !PlanRoute(Candidate,Registry->ClaimApproach(Candidate,this),Path,Obstacle)) continue;
-            const float Length=bInReach ? 0.f : RouteLength(Path);
-            if (!BestGoal || Length<BestLength)
-            {
-                BestGoal=Candidate;BestBlocker=Obstacle;BestLength=Length;BestRoute=MoveTemp(Path);
-            }
+            return FVector::DistSquared(GetActorLocation(),TargetPoint(const_cast<ABuilding*>(&A)))<
+                FVector::DistSquared(GetActorLocation(),TargetPoint(const_cast<ABuilding*>(&B)));
+        });
+        // Try nearby objectives first, stopping at the first usable route.
+        for (ABuilding* Candidate : Candidates)
+        {
+            TArray<FVector> Path;ABuilding* Obstacle=nullptr;
+            if (!PlanRoute(Candidate,Registry->ClaimApproach(Candidate,this),Path,Obstacle)) continue;
+            BestGoal=Candidate;BestBlocker=Obstacle;BestRoute=MoveTemp(Path);break;
         }
     }
     if (!BestGoal)
@@ -199,12 +176,18 @@ void ABorderZombie::Think(float Now)
     UBuildingTargetRegistry* Registry=GetWorld()->GetSubsystem<UBuildingTargetRegistry>();
     NextDecisionTime=Now+FMath::Max(.2f,Settings ? Settings->DecisionInterval : .65f);
     APawn* Player=UGameplayStatics::GetPlayerPawn(this,0);
-    if (CanReach(Player,DetectionRadius))
+    const bool bPlayerDetected=IsValid(Player) && !Player->ActorHasTag(TEXT("Dead")) &&
+        FVector::DistSquared(GetActorLocation(),Player->GetActorLocation())<=FMath::Square(DetectionRadius);
+    if (bPlayerDetected)
     {
         Registry->Release(this);
         CurrentObjective=Player;
         ABuilding* Blocker=nullptr;
-        if (PlanRoute(Player,Cast<ACharacter>(Player) ? Cast<ACharacter>(Player)->GetNavAgentLocation() : Player->GetActorLocation(),Route,Blocker))
+        if (CanReach(Player,AttackReach))
+        { bUsingFallback=false;CurrentTarget=Player;Route.Reset();return; }
+        const FVector Destination=Cast<ACharacter>(Player) ? Cast<ACharacter>(Player)->GetNavAgentLocation() : Player->GetActorLocation();
+        if (PlanRoute(Player,Destination,Route,Blocker) && (Blocker ||
+            (!Route.IsEmpty() && FVector::Dist(Route.Last(),Destination)<=AttackReach+75.f)))
         {
             bUsingFallback=false;
             CurrentTarget=Blocker ? static_cast<AActor*>(Blocker) : Player;

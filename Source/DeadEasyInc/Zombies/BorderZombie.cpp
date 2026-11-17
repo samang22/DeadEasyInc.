@@ -125,6 +125,8 @@ void ABorderZombie::Tick(float DeltaSeconds)
             return;
         }
     const float Now = GetWorld()->GetTimeSeconds();
+    if (Now>=NextDecisionTime || !IsValid(CurrentTarget) || CurrentTarget->ActorHasTag(TEXT("Dead"))) Think(Now);
+    if (bAttackPending && AttackTarget.Get()!=CurrentTarget) bAttackPending=false;
     if (bAttackPending)
     {
         if (Now >= AttackTime)
@@ -152,7 +154,6 @@ void ABorderZombie::Tick(float DeltaSeconds)
         }
         else return;
     }
-    if (Now>=NextDecisionTime || !IsValid(CurrentTarget) || CurrentTarget->ActorHasTag(TEXT("Dead"))) Think(Now);
     AActor* Target = CurrentTarget;
     if (!Target) { PlayAnimation(IdleAnimation, true); return; }
     if (CanReach(Target, AttackReach))
