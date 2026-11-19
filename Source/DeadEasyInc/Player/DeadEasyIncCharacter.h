@@ -13,6 +13,8 @@ class UCameraComponent;
 class UInputAction;
 class UBuildingRepairComponent;
 struct FInputActionValue;
+class UNiagaraComponent;
+class UNiagaraSystem;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogTemplateCharacter, Log, All);
 
@@ -55,6 +57,8 @@ protected:
 	UPROPERTY(EditAnywhere, Category ="Input")
 	class UInputAction* MouseLookAction;
 	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Weather")
+	TObjectPtr<UNiagaraComponent> SnowComponent;
 public:
 	ADeadEasyIncCharacter();
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UCorpseHandlingComponent> CorpseHandling;

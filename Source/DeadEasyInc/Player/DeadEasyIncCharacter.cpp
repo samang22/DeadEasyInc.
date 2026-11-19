@@ -15,6 +15,7 @@
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Player/Data/PlayerSettings.h"
 #include "Interaction/BuildingRepairComponent.h"
+#include "NiagaraComponent.h"
 
 ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 {
@@ -52,6 +53,13 @@ ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 	// Configure character movement
 	GetCharacterMovement()->BrakingDecelerationFalling = 1500.0f;
 	GetCharacterMovement()->AirControl = 0.5f;
+	
+	
+	SnowComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("SnowComponent"));
+
+	SnowComponent->SetupAttachment(RootComponent);
+	SnowComponent->SetAutoActivate(true);
+	
 }
 
 void ADeadEasyIncCharacter::BeginPlay()
