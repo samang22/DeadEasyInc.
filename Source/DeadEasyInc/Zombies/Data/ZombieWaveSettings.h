@@ -21,6 +21,11 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1",ClampMax="32")) int32 AttemptsPerStep = 8;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) float GroundSearchUp = 1500.f;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) float GroundSearchDown = 5000.f;
-    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0",ClampMax="1")) float MinGroundNormalZ = .65f;
-    UPROPERTY(EditAnywhere, BlueprintReadOnly) int32 RandomSeed = 1337;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0",ClampMax="1")) 
+    float MinGroundNormalZ = .65f;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) 
+    int32 RandomSeed = 1337;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly)
+    float ReinforcementCoefficient = 0.1f;
+
 };

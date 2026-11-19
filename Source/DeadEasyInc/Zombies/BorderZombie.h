@@ -57,6 +57,10 @@ public:
     float CorpsePushMaxSpeed = 180.f;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Zombie|Corpse Pushing")
     FName CorpsePushBone = TEXT("pelvis");
+    
+public:
+    void ApplyDayReinforcement(float Multiplier);
+    
 protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;

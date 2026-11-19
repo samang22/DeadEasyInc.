@@ -51,6 +51,29 @@ ABorderZombie::ABorderZombie()
     GetCharacterMovement()->AvoidanceConsiderationRadius = 350.f;
 }
 
+void ABorderZombie::ApplyDayReinforcement(float Multiplier)
+{
+    Multiplier = FMath::Max(1.0f, Multiplier);
+
+    // 체력
+    Health *= Multiplier;
+
+    // 공격력
+    AttackDamage *= Multiplier;
+
+    // // 탐지 범위
+    // DetectionRadius *= Multiplier;
+
+    // // 공격 사거리
+    // AttackReach *= Multiplier;
+
+    // // 이동 속도
+    // if (UCharacterMovementComponent* Movement = GetCharacterMovement())
+    // {
+    //     Movement->MaxWalkSpeed *= Multiplier;
+    // }
+}
+
 void ABorderZombie::BeginPlay()
 {
     Super::BeginPlay();
