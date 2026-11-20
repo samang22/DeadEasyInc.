@@ -177,11 +177,11 @@ private:
     void BeginMountedCamera(ACharacter* Character);
     void RestoreMountedCamera(bool bImmediate);
     void UpdateMountedCamera(float PreviousVehicleYaw);
-    bool TraceGroundAt(const FVector& At, FHitResult& OutHit) const;
     void AdvanceMovement(float DeltaTime);
-    void AnimateWheels(const FVector& OldLocation, float OldYaw, float NewYaw);
     void AdvanceFlap(float DeltaTime);
-    void PollIntake(float DeltaTime);
+
+    UPROPERTY()
+    TObjectPtr<class UK17MovementComponent> DriveMovement;
 
     UPROPERTY(Transient)
     TWeakObjectPtr<ACharacter> Driver;
@@ -194,9 +194,5 @@ private:
     bool bPreviousUseControllerPitch = false;
     bool bPreviousUseControllerRoll = false;
 
-    float ForwardInput = 0.f;
-    float RightInput = 0.f;
-    float CurrentSpeed = 0.f;
-    float LastInputTime = -1000.f;
     bool bFrontFlapOpen = false;
 };

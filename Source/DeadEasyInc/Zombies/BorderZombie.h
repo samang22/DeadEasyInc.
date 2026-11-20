@@ -5,6 +5,8 @@
 #include "BorderZombie.generated.h"
 
 class UAnimSequence;
+class UZombieCorpseComponent;
+class UZombieNavigationComponent;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FBorderZombieDied);
 
 UCLASS()
@@ -48,6 +50,7 @@ public:
     int32 TransportSlot=INDEX_NONE;
     void ApplyCorpseCollision();
     void TickCorpseInfluences(float DeltaSeconds);
+    UZombieCorpseComponent* GetCorpsePhysics() const { return CorpsePhysics.Get(); }
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Zombie|Corpse Pushing")
     float CorpsePushReach = 35.f;
@@ -65,32 +68,14 @@ protected:
     virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
-    void Think(float Now);
-    bool BuildSegment(const FVector& Start,const FVector& End,TArray<FVector>& Points,bool bAllowPartial=false) const;
-    bool PlanRoute(AActor* Goal,const FVector& Destination,TArray<FVector>& Points,class ABuilding*& Blocker) const;
-    bool InspectRoute(const TArray<FVector>& Points,class ABuilding*& Blocker) const;
-    void ChooseBuildingGoal();
-    void FollowRoute(float DeltaSeconds);
     UPROPERTY(VisibleAnywhere, Category="Zombie|AI") TObjectPtr<AActor> CurrentObjective;
     UPROPERTY(VisibleAnywhere, Category="Zombie|AI") TObjectPtr<AActor> CurrentTarget;
-    TArray<FVector> Route;
-    int32 Waypoint = 1;
-    bool bUsingFallback=false;
-    int32 PlanRevision = INDEX_NONE;
-    float NextDecisionTime = 0.f;
-    float NextPathTime = 0.f;
-    float LastProgressTime = 0.f;
-    FVector LastProgressLocation;
-    FVector TargetPoint(AActor* Target) const;
-    bool CanReach(AActor* Target, float Range) const;
     void PlayAnimation(UAnimSequence* Animation, bool bLoop);
-    void PushCorpses(const FVector& Direction, float DeltaSeconds);
     TWeakObjectPtr<AActor> AttackTarget;
     TObjectPtr<UAnimSequence> CurrentAnimation;
     float AttackTime = 0.f;
     float NextAttackTime = 0.f;
     bool bAttackPending = false;
-    uint64 LastPushFrame = MAX_uint64;
-    float PushForceThisFrame = 0.f;
-    float NextCorpseContactTime=0.f;
+    UPROPERTY() TObjectPtr<UZombieCorpseComponent> CorpsePhysics;
+    UPROPERTY() TObjectPtr<UZombieNavigationComponent> Navigation;
 };

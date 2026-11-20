@@ -20,7 +20,7 @@ public:
     // Asset-specific pose is set on each weapon Blueprint.
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly) FTransform ViewTransform = FTransform(FRotator::ZeroRotator, FVector(45,18,-18));
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Transient) TObjectPtr<UWeaponDefinition> WeaponDefinition;
-    void ConfigureAudio(UWeaponDefinition* Definition) { WeaponDefinition=Definition; }
+    void ConfigureAudio(UWeaponDefinition* Definition);
     void PlayEquip();
     void PlayUnequip();
     void PlayDryFire();
@@ -31,13 +31,5 @@ public:
 protected:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
-    void PlayWeaponSound(USoundBase* Sound);
-    void PlayImpact(const FHitResult& Hit);
-    void PlayReloadStage(USoundBase* Sound);
-    void PlayReloadInsert();
-    void PlayReloadEnd();
-    float AudioPitch() const;
-    FTimerHandle ReloadInsertTimer;
-    FTimerHandle ReloadEndTimer;
-    UPROPERTY(Transient) TArray<TObjectPtr<class UAudioComponent>> ReloadVoices;
+    UPROPERTY() TObjectPtr<class UWeaponAudioComponent> WeaponAudio;
 };

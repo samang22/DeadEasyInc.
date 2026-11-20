@@ -5,11 +5,11 @@
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Interaction/BuildingRepairComponent.h"
 #include "Zombies/BorderZombie.h"
+#include "Zombies/Components/ZombieCorpseComponent.h"
 #include "Scavenging/CorpseHandlingComponent.h"
 #include "Scavenging/Handcart.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SceneComponent.h"
-#include "PhysicsEngine/BodyInstance.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PlayerController.h"
@@ -58,13 +58,7 @@ void UBorderCheckpointComponent::Capture(int32 Day)
             Record.bCorpse = Zombie->bDead;
             Record.WallTarget = Zombie->WallTarget;Record.TransportSlot=Zombie->TransportSlot;Record.TransportCart=Zombie->Carrier.IsValid() ? Zombie->Carrier->GetFName() : NAME_None;
             if (Zombie->bDead)
-            {
-                TArray<FName> Bones;
-                Zombie->GetMesh()->GetBoneNames(Bones);
-                for (FName Bone : Bones)
-                    if (FBodyInstance* Body = Zombie->GetMesh()->GetBodyInstance(Bone))
-                        if (Body->IsInstanceSimulatingPhysics()) Record.PhysicsBodies.Add(Bone, Body->GetUnrealWorldTransform());
-            }
+                Zombie->GetCorpsePhysics()->CapturePose(*Zombie->GetMesh(), Record.PhysicsBodies);
         }
     }
 }
@@ -122,11 +116,7 @@ int32 UBorderCheckpointComponent::Restore()
             if (Record.bCorpse)
             {
                 UGameplayStatics::ApplyDamage(Zombie, 1.f, nullptr, nullptr, nullptr);
-                for (const auto& Pair : Record.PhysicsBodies)
-                    if (FBodyInstance* Body = Zombie->GetMesh()->GetBodyInstance(Pair.Key))
-                        Body->SetBodyTransform(Pair.Value, ETeleportType::TeleportPhysics);
-                Zombie->GetMesh()->SetAllPhysicsLinearVelocity(FVector::ZeroVector);
-                Zombie->GetMesh()->SetAllPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+                Zombie->GetCorpsePhysics()->RestorePose(*Zombie->GetMesh(), Record.PhysicsBodies);
             }
         }
         else if (ACharacter* Character = Cast<ACharacter>(Actor))

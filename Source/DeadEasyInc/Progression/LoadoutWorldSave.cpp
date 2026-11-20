@@ -2,10 +2,10 @@
 #include "Buildings/Building.h"
 #include "Buildings/Heating/CentralBoiler.h"
 #include "Zombies/BorderZombie.h"
+#include "Zombies/Components/ZombieCorpseComponent.h"
 #include "Scavenging/CorpseHandlingComponent.h"
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Components/SkeletalMeshComponent.h"
-#include "PhysicsEngine/BodyInstance.h"
 #include "Kismet/GameplayStatics.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
@@ -30,11 +30,7 @@ void UPlayerLoadoutComponent::CaptureWorldSave(ULoadoutSave* Save) const
         {
             Record.bZombie=true;Record.bCorpse=Zombie->bDead;Record.Health=Zombie->Health;Record.TransportSlot=Zombie->TransportSlot;Record.TransportCart=Zombie->Carrier.IsValid() ? Zombie->Carrier->GetFName() : NAME_None;
             if (Zombie->bDead)
-            {
-                TArray<FName> Bones;Zombie->GetMesh()->GetBoneNames(Bones);
-                for (FName Bone : Bones) if (auto* Body=Zombie->GetMesh()->GetBodyInstance(Bone))
-                    if (Body->IsInstanceSimulatingPhysics()) Record.Bodies.Add(Bone,Body->GetUnrealWorldTransform());
-            }
+                Zombie->GetCorpsePhysics()->CapturePose(*Zombie->GetMesh(), Record.Bodies);
         }
     }
 }
@@ -79,9 +75,7 @@ void UPlayerLoadoutComponent::RestoreWorldSave(const ULoadoutSave* Save)
         if (Record.bCorpse)
         {
             UGameplayStatics::ApplyDamage(Zombie,1.f,nullptr,nullptr,nullptr);
-            for (const auto& Pair : Record.Bodies) if (auto* Body=Zombie->GetMesh()->GetBodyInstance(Pair.Key)) Body->SetBodyTransform(Pair.Value,ETeleportType::TeleportPhysics);
-            Zombie->GetMesh()->SetAllPhysicsLinearVelocity(FVector::ZeroVector);Zombie->GetMesh()->SetAllPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-
+            Zombie->GetCorpsePhysics()->RestorePose(*Zombie->GetMesh(), Record.Bodies);
         }
     }
     for (TActorIterator<AHandcart> It(GetWorld());It;++It) It->RefreshCargo();

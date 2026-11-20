@@ -52,10 +52,12 @@ ABuilding* UBuildingRepairComponent::GetFocusedBuilding() const
 void UBuildingRepairComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-    UPlayerLoadoutComponent* Loadout = GetOwner()->FindComponentByClass<UPlayerLoadoutComponent>();
+    if (!bRepairHeld) return;
     const auto* Work=GetOwner()->FindComponentByClass<UCorpseHandlingComponent>();
     if (Work && (!Work->bActive || Work->Tool!=EWorkTool::Repair)) return;
-    if (!bRepairHeld || GetWood() < GetWoodPerStroke() || GetOwner()->ActorHasTag(TEXT("Dead")) || (Loadout && Loadout->bMenuOpen)) return;
+    UPlayerLoadoutComponent* Loadout = GetOwner()->FindComponentByClass<UPlayerLoadoutComponent>();
+    const int32 AvailableWood = Loadout && Loadout->Settings ? Loadout->GetResource(TEXT("Wood")) : Wood;
+    if (AvailableWood < GetWoodPerStroke() || GetOwner()->ActorHasTag(TEXT("Dead")) || (Loadout && Loadout->bMenuOpen)) return;
     const float Now = GetWorld()->GetTimeSeconds();
     if (Now < NextStrokeTime) return;
     ABuilding* Wall = GetFocusedBuilding();

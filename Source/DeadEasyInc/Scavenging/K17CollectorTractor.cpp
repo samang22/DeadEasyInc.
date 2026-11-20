@@ -1,5 +1,6 @@
 #include "Scavenging/K17CollectorTractor.h"
 #include "Scavenging/EquipmentMountComponent.h"
+#include "Scavenging/K17MovementComponent.h"
 #include "Scavenging/TractorIntakeComponent.h"
 #include "Core/BorderGameMode.h"
 #include "Progression/PlayerLoadoutComponent.h"
@@ -9,11 +10,9 @@
 #include "GameFramework/PlayerController.h"
 #include "Components/ArrowComponent.h"
 #include "Components/BoxComponent.h"
-#include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/Character.h"
-#include "GameFramework/CharacterMovementComponent.h"
 #include "Math/UnrealMathUtility.h"
 
 AK17CollectorTractor::AK17CollectorTractor()
@@ -71,6 +70,7 @@ AK17CollectorTractor::AK17CollectorTractor()
     ConfigureWheel(WheelFR, FVector(+106.f, -94.f, -18.f));
     ConfigureWheel(WheelRL, FVector(-112.f, +94.f, -18.f));
     ConfigureWheel(WheelRR, FVector(-112.f, -94.f, -18.f));
+    DriveMovement = CreateDefaultSubobject<UK17MovementComponent>(TEXT("DriveMovement"));
 
     // From model README: world-local front flap hinge is (+229, 0, +105).
     FrontFlapPivot = CreateDefaultSubobject<USceneComponent>(TEXT("FrontFlapPivot"));
@@ -174,16 +174,12 @@ void AK17CollectorTractor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 
 void AK17CollectorTractor::SetDriveInput(float Forward, float Right)
 {
-    if (!IsMounted()) return;
-    ForwardInput = FMath::Clamp(Forward, -1.f, 1.f);
-    RightInput = FMath::Clamp(Right, -1.f, 1.f);
-    LastInputTime = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f;
+    if (IsMounted()) DriveMovement->SetInput(Forward, Right);
 }
 
 void AK17CollectorTractor::ClearDriveInput()
 {
-    ForwardInput = 0.f;
-    RightInput = 0.f;
+    DriveMovement->ClearInput();
 }
 
 bool AK17CollectorTractor::CanInteract(APawn* User) const
@@ -195,7 +191,7 @@ bool AK17CollectorTractor::BeginUse(APawn* User) { return Mount(Cast<ACharacter>
 bool AK17CollectorTractor::IsUsedBy(const APawn* User) const { return User && Driver.Get()==User; }
 bool AK17CollectorTractor::ExecutePrimaryAction()
 {
-    if (!IsMounted() || FMath::Abs(CurrentSpeed)>3.f || !TractorIntakeComponent->BeginDischarge()) return false;
+    if (!IsMounted() || FMath::Abs(DriveMovement->GetSpeed())>3.f || !TractorIntakeComponent->BeginDischarge()) return false;
     OnFrontDischargeRequested();return true;
 }
 void AK17CollectorTractor::ToggleIntake()
@@ -215,30 +211,14 @@ bool AK17CollectorTractor::Mount(ACharacter* Character)
 {
     if (!CanInteract(Character) || !MountState->Mount(Character,StandingPosition)) return false;
     Driver=Character;
-    ClearDriveInput();CurrentSpeed=0.f;
+    DriveMovement->ResetMotion();
     BeginMountedCamera(Character);
     return true;
 }
 
-bool AK17CollectorTractor::TraceGroundAt(const FVector& At, FHitResult& OutHit) const
-{
-    if (!GetWorld()) return false;
-    FCollisionQueryParams Query(SCENE_QUERY_STAT(K17Ground), false, this);
-    if (Driver.IsValid()) Query.AddIgnoredActor(Driver.Get());
-    return GetWorld()->LineTraceSingleByObjectType(
-        OutHit, At + FVector(0.f, 0.f, 300.f), At - FVector(0.f, 0.f, 500.f),
-        FCollisionObjectQueryParams(ECC_WorldStatic), Query);
-}
-
 bool AK17CollectorTractor::SnapToGround()
 {
-    FHitResult Ground;
-    if (!TraceGroundAt(GetActorLocation(), Ground) || Ground.ImpactNormal.Z < MinGroundNormalZ)
-        return false;
-    FVector Location = GetActorLocation();
-    Location.Z = Ground.ImpactPoint.Z + Collision->GetScaledBoxExtent().Z + GroundClearance;
-    SetActorLocation(Location, false, nullptr, ETeleportType::TeleportPhysics);
-    return true;
+    return DriveMovement->SnapToGround(*Collision, Driver.Get(), GroundClearance, MinGroundNormalZ);
 }
 
 bool AK17CollectorTractor::Dismount() { return EndUse(Driver.Get()); }
@@ -250,7 +230,7 @@ bool AK17CollectorTractor::EndUse(APawn* User, bool bForce)
     if (!MountState->Dismount(bForce)) return false;
     RestoreMountedCamera(bForce);
     bIntakeEnabled=false;TractorIntakeComponent->OnUseEnded();
-    Driver.Reset();ClearDriveInput();CurrentSpeed=0.f;
+    Driver.Reset();DriveMovement->ResetMotion();
     if (IsValid(Previous) && !Previous->IsActorBeingDestroyed() && GetWorld() && !GetWorld()->bIsTearingDown)
         if (auto* Loadout=Previous->FindComponentByClass<UPlayerLoadoutComponent>()) Loadout->RefreshWeapon();
     return true;
@@ -322,63 +302,20 @@ void AK17CollectorTractor::CalcCamera(float DeltaTime, FMinimalViewInfo& OutResu
     else Super::CalcCamera(DeltaTime,OutResult);
 }
 
-void AK17CollectorTractor::AnimateWheels(const FVector& OldLocation, float OldYaw, float NewYaw)
-{
-    const float ForwardDist = FVector::DotProduct(GetActorLocation() - OldLocation, GetActorForwardVector());
-    const float YawRadians = FMath::DegreesToRadians(FMath::FindDeltaAngleDegrees(OldYaw, NewYaw));
-    const float HalfTrackCm = 94.f;
-    const float LeftDegrees = FMath::RadiansToDegrees((ForwardDist - YawRadians * HalfTrackCm) / WheelRadiusCm);
-    const float RightDegrees = FMath::RadiansToDegrees((ForwardDist + YawRadians * HalfTrackCm) / WheelRadiusCm);
-    WheelFL->AddLocalRotation(FRotator(-LeftDegrees, 0.f, 0.f));
-    WheelRL->AddLocalRotation(FRotator(-LeftDegrees, 0.f, 0.f));
-    WheelFR->AddLocalRotation(FRotator(-RightDegrees, 0.f, 0.f));
-    WheelRR->AddLocalRotation(FRotator(-RightDegrees, 0.f, 0.f));
-}
-
 void AK17CollectorTractor::AdvanceMovement(float DeltaTime)
 {
-    if (!Driver.IsValid()) return;
-    if (TractorIntakeComponent->IsDischarging()) { ClearDriveInput();CurrentSpeed=0.f;return; }
-    // When Enhanced Input stops sending Triggered (key released), neutralize input.
-    if (GetWorld()->GetTimeSeconds() - LastInputTime > 0.15f)
-        ClearDriveInput();
-
-    const float TargetSpeed = ForwardInput >= 0.f
-        ? ForwardInput * MaxForwardSpeed : ForwardInput * MaxReverseSpeed;
-    const float SpeedRate = FMath::IsNearlyZero(ForwardInput) || FMath::Abs(TargetSpeed) < FMath::Abs(CurrentSpeed)
-        ? Deceleration : Acceleration;
-    CurrentSpeed = FMath::FInterpConstantTo(CurrentSpeed, TargetSpeed, DeltaTime, SpeedRate);
-    if (FMath::IsNearlyZero(CurrentSpeed, 0.01f) && FMath::IsNearlyZero(RightInput, 0.01f)) return;
-
-    const FVector OldLocation = GetActorLocation();
-    const float OldYaw = GetActorRotation().Yaw;
-    const float TargetYaw = OldYaw + RightInput * TurnSpeedDegrees * DeltaTime;
-    const FRotator NewRotation(0.f, TargetYaw, 0.f);
-    FVector Destination = OldLocation + NewRotation.Vector() * CurrentSpeed * DeltaTime;
-
-    // Sample ground at center/front/rear so the large box is not buried on mild slopes.
-    FHitResult Center, Front, Rear;
-    const bool bCenter = TraceGroundAt(Destination, Center);
-    const bool bFront = TraceGroundAt(Destination + NewRotation.Vector() * 150.f, Front);
-    const bool bRear = TraceGroundAt(Destination - NewRotation.Vector() * 150.f, Rear);
-    if (!bCenter || Center.ImpactNormal.Z < MinGroundNormalZ)
+    ACharacter* Character = Driver.Get();
+    if (!Character) return;
+    if (TractorIntakeComponent->IsDischarging())
     {
-        CurrentSpeed = 0.f;
+        DriveMovement->ResetMotion();
         return;
     }
-    float HighestGroundZ = Center.ImpactPoint.Z;
-    if (bFront && Front.ImpactNormal.Z >= MinGroundNormalZ)
-        HighestGroundZ = FMath::Max(HighestGroundZ, Front.ImpactPoint.Z);
-    if (bRear && Rear.ImpactNormal.Z >= MinGroundNormalZ)
-        HighestGroundZ = FMath::Max(HighestGroundZ, Rear.ImpactPoint.Z);
-    Destination.Z = HighestGroundZ + Collision->GetScaledBoxExtent().Z + GroundClearance;
-
-    // Root is a BoxCollision. Sweep against obstacles rather than blocking on every ground contact.
-    FHitResult Hit;
-    SetActorLocationAndRotation(Destination, NewRotation, true, &Hit, ETeleportType::None);
-    if (Hit.bBlockingHit) CurrentSpeed = 0.f;
-
-    AnimateWheels(OldLocation, OldYaw, GetActorRotation().Yaw);
+    // Use the Actor's live values so Blueprint changes to drive tuning still take effect.
+    const FK17DriveTuning Tuning{MaxForwardSpeed, MaxReverseSpeed, Acceleration, Deceleration,
+                                TurnSpeedDegrees, WheelRadiusCm, GroundClearance, MinGroundNormalZ};
+    USceneComponent* const Wheels[] = {WheelFL.Get(), WheelRL.Get(), WheelFR.Get(), WheelRR.Get()};
+    DriveMovement->Advance(DeltaTime, *Collision, Character, Tuning, Wheels);
 }
 
 void AK17CollectorTractor::SetFrontFlapOpen(bool bOpen)
@@ -399,11 +336,6 @@ void AK17CollectorTractor::FindIntakeCandidates(TArray<AActor*>& OutActors) cons
     TractorIntakeComponent->FindCandidates(OutActors);
 }
 
-void AK17CollectorTractor::PollIntake(float DeltaTime)
-{
-    TractorIntakeComponent->SetIntakeEnabled(bIntakeEnabled && Driver.IsValid());
-}
-
 void AK17CollectorTractor::RequestFrontDischarge()
 {
     ExecutePrimaryAction();
@@ -419,8 +351,7 @@ void AK17CollectorTractor::Tick(float DeltaTime)
     {
         bIntakeEnabled=false;TractorIntakeComponent->OnUseEnded();
         Driver.Reset();
-        CurrentSpeed = 0.f;
-        ClearDriveInput();
+        DriveMovement->ResetMotion();
     }
     if ((!CameraController.IsExplicitlyNull() || !CameraCharacter.IsExplicitlyNull()) &&
         (!Driver.IsValid() || Driver.Get()!=CameraCharacter.Get() ||
@@ -429,5 +360,5 @@ void AK17CollectorTractor::Tick(float DeltaTime)
     AdvanceMovement(DeltaTime);
     UpdateMountedCamera(PreviousVehicleYaw);
     AdvanceFlap(DeltaTime);
-    PollIntake(DeltaTime);
+    TractorIntakeComponent->SetIntakeEnabled(bIntakeEnabled && Driver.IsValid());
 }

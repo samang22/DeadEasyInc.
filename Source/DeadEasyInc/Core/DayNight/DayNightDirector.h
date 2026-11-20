@@ -49,12 +49,8 @@ protected:
 private:
     void ApplyLighting();
     void StartTransition(class ABorderGate* Gate,float Duration,bool bToNight);
-    void StopPlayback();
-    void BeginOverview();
-    void RestoreView();
     UFUNCTION() void CompleteTransition();
-    UPROPERTY() TObjectPtr<class ULevelSequencePlayer> SequencePlayer;
-    UPROPERTY() TObjectPtr<class ALevelSequenceActor> SequenceActor;
+    UPROPERTY() TObjectPtr<class UDayNightCinematicComponent> Cinematic;
     TWeakObjectPtr<class ABorderGate> ActiveGate;
     float DaySunIntensity = 10.f;
     float DaySkyIntensity = 1.f;
@@ -64,5 +60,4 @@ private:
     bool bActive = false;
     bool bTransitionToNight=true;
     bool bNightLightsOn=false;
-    TWeakObjectPtr<class APlayerController> OverviewController;
 };
