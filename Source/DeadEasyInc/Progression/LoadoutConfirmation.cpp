@@ -40,6 +40,7 @@ bool UPlayerLoadoutComponent::ConfirmTransaction()
     bool Result=false;
     if (Action==TEXT("Craft")) Result=Craft(Id);
     else if (Action==TEXT("Tool")) Result=CraftTool(Id);
+    else if (Action==TEXT("Armor")) Result=CraftArmor(Id);
     else if (Action==TEXT("Upgrade")) Result=ConfirmUpgrade();
     else if (Action==TEXT("Research")) Result=Research(Id);
     bExecutingTransaction=false;CancelTransaction();return Result;

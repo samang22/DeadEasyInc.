@@ -9,6 +9,9 @@
 
 class UInputComponent;
 class USkeletalMeshComponent;
+class USceneComponent;
+class USkeletalMesh;
+enum class EVisibilityBasedAnimTickOption : uint8;
 class UCameraComponent;
 class UInputAction;
 class UBuildingRepairComponent;
@@ -33,6 +36,9 @@ class ADeadEasyIncCharacter : public ACharacter
 	/** First person camera */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta = (AllowPrivateAccess = "true"))
 	UCameraComponent* FirstPersonCameraComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Components", meta=(AllowPrivateAccess="true"))
+    TObjectPtr<USceneComponent> WeaponMount;
 
 protected:
 
@@ -67,6 +73,21 @@ public:
     UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Settings")
     TObjectPtr<class UPlayerSettings> Settings;
     virtual void BeginPlay() override;
+#if WITH_EDITOR
+    virtual void OnConstruction(const FTransform& Transform) override;
+#endif
+    virtual float TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent,
+        AController* EventInstigator, AActor* DamageCauser) override;
+    void SetArmorAppearance(const TArray<USkeletalMesh*>& Meshes);
+
+private:
+    UPROPERTY(EditDefaultsOnly, Category="Appearance")
+    TArray<TObjectPtr<USkeletalMesh>> FirstPersonAppearance;
+
+    UPROPERTY(Transient) TArray<TObjectPtr<USkeletalMeshComponent>> ArmorMeshes;
+    USkeletalMeshComponent* AddAppearancePart(USkeletalMeshComponent& Leader, USkeletalMesh* PartMesh, bool bEditorPreview = false);
+    EVisibilityBasedAnimTickOption SavedMeshTickOption{};
+    bool bSavedMeshVisibility = true;
 
 protected:
 
@@ -104,6 +125,8 @@ public:
 
 	/** Returns the first person mesh **/
 	USkeletalMeshComponent* GetFirstPersonMesh() const { return FirstPersonMesh; }
+
+    USceneComponent* GetWeaponMount() const { return WeaponMount; }
 
 	/** Returns first person camera component **/
 	UCameraComponent* GetFirstPersonCameraComponent() const { return FirstPersonCameraComponent; }

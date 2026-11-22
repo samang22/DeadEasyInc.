@@ -108,6 +108,16 @@ void ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout)
     }
     if (const auto* Health=Loadout->GetOwner()->FindComponentByClass<UCombatHealthComponent>())
         DrawText(FString::Printf(TEXT("Health %.0f / %.0f"),Health->Health,Health->MaxHealth),FLinearColor::White,30,135);
+    if (const float Reduction = Loadout->GetZombieDamageReduction(); Reduction > 0.f)
+    {
+        const FLinearColor ArmorColor(.55f,.8f,1.f);
+        DrawLine(30,157,42,157,ArmorColor,1.5f);
+        DrawLine(30,157,30,163,ArmorColor,1.5f);
+        DrawLine(42,157,42,163,ArmorColor,1.5f);
+        DrawLine(30,163,36,169,ArmorColor,1.5f);
+        DrawLine(42,163,36,169,ArmorColor,1.5f);
+        DrawText(FString::Printf(TEXT("Armor  |  %.0f%% less zombie damage"),Reduction*100.f),ArmorColor,48,155);
+    }
     const UWeaponDefinition* Weapon = Loadout->GetActiveWeapon();
     FString WeaponText = Weapon ? Weapon->DisplayName.ToString() : TEXT("No weapon in this category");
     if (Weapon && Weapon->Category == EWeaponCategory::Ranged)
@@ -151,9 +161,8 @@ void ABorderHUD::DrawStationMenu(UPlayerLoadoutComponent* Loadout)
     if (!Station || !Loadout->Settings) return;
     const float Width=FMath::Min(760.f,Canvas->SizeX-40.f);
     const float X=(Canvas->SizeX-Width)*.5f,Y=120.f;
-    const bool bResearch=Station->StationType==EStationType::Research;
-    if (bResearch) { DrawResearchTree(Loadout);return; }
-    const int32 Count=bResearch ? Loadout->Settings->Research.Num() : Loadout->Settings->Weapons.Num()+Loadout->Settings->Tools.Num();
+    if (Station->StationType==EStationType::Research) { DrawResearchTree(Loadout);return; }
+    const int32 Count=Loadout->Settings->Weapons.Num()+Loadout->Settings->Tools.Num()+Loadout->Settings->Armor.Num();
     const float RowHeight=FMath::Min(60.f,(Canvas->SizeY-Y-125.f)/FMath::Max(1,Count));
     DrawRect(FLinearColor(.025f,.035f,.045f,.98f),X-15,Y-15,Width+30,RowHeight*Count+115);
     DrawText(FString::Printf(TEXT("WORKBENCH - LEVEL %d   [Upgrade]"),Station->UpgradeLevel),FLinearColor::White,X,Y,nullptr,1.3f);
@@ -161,22 +170,30 @@ void ABorderHUD::DrawStationMenu(UPlayerLoadoutComponent* Loadout)
     AddHitBox(FVector2D(X+Width-140,Y),FVector2D(140,30),TEXT("OpenUpgrade"),true);
     for (int32 Index=0;Index<Count;++Index)
     {
-        const UResearchDefinition* Research=bResearch ? Loadout->Settings->Research[Index].Get() : nullptr;
         const UWeaponDefinition* Weapon=Loadout->Settings->Weapons.IsValidIndex(Index) ? Loadout->Settings->Weapons[Index].Get() : nullptr;
         const int32 ToolIndex=Index-Loadout->Settings->Weapons.Num();
         const UToolDefinition* Tool=Loadout->Settings->Tools.IsValidIndex(ToolIndex) ? Loadout->Settings->Tools[ToolIndex].Get() : nullptr;
-        if (!Research && !Weapon && !Tool) continue;
-        const FString Status=bResearch ? Loadout->ResearchStatus(Research) : Tool ? Loadout->ToolStatus(Tool) : Loadout->CraftStatus(Weapon);
-        const bool bAvailable=Status==TEXT("Research") || Status==TEXT("Craft");
-        const bool bOwned=!bResearch && Status==TEXT("Owned");
+        const int32 ArmorIndex=ToolIndex-Loadout->Settings->Tools.Num();
+        const UArmorDefinition* Armor=Loadout->Settings->Armor.IsValidIndex(ArmorIndex) ? Loadout->Settings->Armor[ArmorIndex].Get() : nullptr;
+        if (!Weapon && !Tool && !Armor) continue;
+        const FString Status=Armor ? Loadout->ArmorStatus(Armor) : Tool ? Loadout->ToolStatus(Tool) : Loadout->CraftStatus(Weapon);
+        const bool bAvailable=Status==TEXT("Craft") || Status==TEXT("Equip");
+        const bool bOwned=Status==TEXT("Owned");
+        const bool bEquipped=Status==TEXT("Equipped");
         const float RowY=Y+60+Index*RowHeight;
         DrawRect(bOwned ? FLinearColor(.06f,.14f,.22f) : bAvailable ? FLinearColor(.08f,.22f,.18f) : FLinearColor(.09f,.10f,.12f),X,RowY,Width,RowHeight-3);
-        DrawText((bResearch ? Research->DisplayName : Tool ? Tool->DisplayName : Weapon->DisplayName).ToString()+TEXT("  -  ")+(bOwned ? TEXT("제작 완료 · 영구 보유") : Status),
+        DrawText((Armor ? Armor->DisplayName : Tool ? Tool->DisplayName : Weapon->DisplayName).ToString()+TEXT("  -  ")+(bOwned ? TEXT("제작 완료 · 영구 보유") : Status),
             bOwned ? FLinearColor(.55f,.8f,1.f) : bAvailable ? FLinearColor(.5f,1.f,.7f) : FLinearColor(.65f,.65f,.65f),X+10,RowY+4);
         if (bOwned) DrawText(TEXT("추가 제작 필요 없음"),FLinearColor(.55f,.7f,.85f),X+10,RowY+23);
-        else DrawText(ResourceCostText(bResearch ? Research->Cost : Loadout->CraftCost(Tool ? Tool->Cost : Weapon->CraftCost)),FLinearColor(.8f,.8f,.8f),X+10,RowY+23);
-        const FString Name=(bResearch ? TEXT("Research.") : Tool ? TEXT("Tool.") : TEXT("Craft."))+(bResearch ? Research->Id : Tool ? Tool->Id : Weapon->Id).ToString();
-        if (!bOwned) AddHitBox(FVector2D(X,RowY),FVector2D(Width,RowHeight-3),FName(*Name),true);
+        else if (Armor)
+        {
+            FString Detail=FString::Printf(TEXT("%.0f%% less zombie damage"),Armor->ZombieDamageReduction*100.f);
+            if (!bEquipped && Status!=TEXT("Equip")) Detail+=TEXT("  |  ")+ResourceCostText(Loadout->CraftCost(Armor->CraftCost));
+            DrawText(Detail,FLinearColor(.8f,.8f,.8f),X+10,RowY+23);
+        }
+        else DrawText(ResourceCostText(Loadout->CraftCost(Tool ? Tool->Cost : Weapon->CraftCost)),FLinearColor(.8f,.8f,.8f),X+10,RowY+23);
+        const FString Name=(Armor ? TEXT("Armor.") : Tool ? TEXT("Tool.") : TEXT("Craft."))+(Armor ? Armor->Id : Tool ? Tool->Id : Weapon->Id).ToString();
+        if (!bOwned && !bEquipped) AddHitBox(FVector2D(X,RowY),FVector2D(Width,RowHeight-3),FName(*Name),true);
     }
     const float FooterY=Y+60+Count*RowHeight;
     DrawText(TEXT("Saved at next dawn. Defeat rolls back today's changes."),FLinearColor(.9f,.8f,.4f),X,FooterY+3);
@@ -217,6 +234,7 @@ void ABorderHUD::NotifyHitBoxClick(FName BoxName)
     }
     else if (Name.StartsWith(TEXT("SelectResearch."))) SelectedResearch=FName(*Name.RightChop(15));
     else if (Name.StartsWith(TEXT("Tool."))) Loadout->CraftTool(FName(*Name.RightChop(5)));
+    else if (Name.StartsWith(TEXT("Armor."))) Loadout->CraftArmor(FName(*Name.RightChop(6)));
     else if (Name==TEXT("ConfirmNight")) Loadout->ConfirmNight();
     else if (Name==TEXT("CancelNight")) Loadout->CloseMenu();
     else if (Name==TEXT("CloseStation")) Loadout->CloseMenu();

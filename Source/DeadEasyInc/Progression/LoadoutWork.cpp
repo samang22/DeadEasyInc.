@@ -7,6 +7,8 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "Combat/Weapons/EquippedWeapon.h"
+#include "Engine/SkeletalMesh.h"
+#include "Player/DeadEasyIncCharacter.h"
 
 void UPlayerLoadoutComponent::SelectWork()
 {
@@ -48,6 +50,75 @@ bool UPlayerLoadoutComponent::CraftTool(FName Id)
     }
     return false;
 }
+const UArmorDefinition* UPlayerLoadoutComponent::FindArmor(FName Id) const
+{
+    if (!Settings || Id.IsNone()) return nullptr;
+    for (const UArmorDefinition* Armor : Settings->Armor)
+        if (Armor && Armor->Id == Id) return Armor;
+    return nullptr;
+}
+
+FString UPlayerLoadoutComponent::ArmorStatus(const UArmorDefinition* Armor) const
+{
+    if (!Armor || Armor->Id.IsNone()) return TEXT("Unavailable");
+    if (State.EquippedArmor.FindRef(Armor->Slot) == Armor->Id) return TEXT("Equipped");
+    if (State.OwnedArmor.Contains(Armor->Id)) return TEXT("Equip");
+    if (!Armor->RequiredResearch.IsNone() && !State.Research.Contains(Armor->RequiredResearch))
+        return TEXT("Research required");
+    if (const auto* Station = GetOpenStation(); Station && Station->UpgradeLevel < Armor->RequiredWorkbenchLevel)
+        return TEXT("Upgrade workbench");
+    return CanAfford(CraftCost(Armor->CraftCost)) ? TEXT("Craft") : TEXT("Not enough materials");
+}
+
+bool UPlayerLoadoutComponent::CraftArmor(FName Id)
+{
+    if (!CanUseStation(false)) return false;
+    const UArmorDefinition* Armor = FindArmor(Id);
+    if (!Armor) return false;
+    const FString Status = ArmorStatus(Armor);
+    if (Status != TEXT("Craft") && Status != TEXT("Equip"))
+    {
+        const FString Missing = Status == TEXT("Not enough materials") ? MissingMaterials(CraftCost(Armor->CraftCost)) : FString();
+        Notify(Missing.IsEmpty() ? Status : Missing, true);
+        return false;
+    }
+    const bool bCrafting = Status == TEXT("Craft");
+    const TMap<FName, int32> Cost = bCrafting ? CraftCost(Armor->CraftCost) : TMap<FName, int32>{};
+    if (!QueueTransaction(TEXT("Armor"), Id, Armor->DisplayName.ToString(), Cost)) return false;
+    Pay(Cost);
+    State.OwnedArmor.AddUnique(Id);
+    State.EquippedArmor.Add(Armor->Slot, Id);
+    RefreshArmor();
+    Notify(FString::Printf(TEXT("%s equipped"), *Armor->DisplayName.ToString()));
+    return true;
+}
+
+void UPlayerLoadoutComponent::RefreshArmor()
+{
+    TArray<USkeletalMesh*> Meshes;
+    float DamageFactor = 1.f;
+    constexpr EArmorSlot Slots[] = { EArmorSlot::Chest, EArmorSlot::Head, EArmorSlot::Hands, EArmorSlot::Legs, EArmorSlot::Feet };
+    for (EArmorSlot Slot : Slots)
+    {
+        const FName Id = State.EquippedArmor.FindRef(Slot);
+        const UArmorDefinition* Armor = State.OwnedArmor.Contains(Id) ? FindArmor(Id) : nullptr;
+        USkeletalMesh* Mesh = Settings ? Settings->ArmorBaseMeshes.FindRef(Slot).Get() : nullptr;
+        if (Armor && Armor->Slot == Slot)
+        {
+            DamageFactor *= 1.f - FMath::Clamp(Armor->ZombieDamageReduction, 0.f, .9f);
+            if (Armor->WorldMesh)
+                Mesh = Armor->WorldMesh;
+        }
+        if (Mesh) Meshes.Add(Mesh);
+    }
+    ZombieDamageReduction = FMath::Clamp(1.f - DamageFactor, 0.f, .9f);
+    if (auto* Character = Cast<ADeadEasyIncCharacter>(GetOwner()))
+    {
+        if (Meshes.Num() != UE_ARRAY_COUNT(Slots)) Meshes.Reset();
+        Character->SetArmorAppearance(Meshes);
+    }
+}
+
 ABuilding* UPlayerLoadoutComponent::FocusedBuilding() const
 {
     const auto* Pawn=Cast<APawn>(GetOwner());const auto* Player=Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;

@@ -30,6 +30,7 @@ void UPlayerLoadoutComponent::BeginPlay()
             State.Magazines.Add(Id, FMath::Max(1, Weapon->MagazineSize));
         }
     Equip();
+    RefreshArmor();
 }
 
 void UPlayerLoadoutComponent::EndPlay(const EEndPlayReason::Type Reason)
@@ -260,7 +261,17 @@ void UPlayerLoadoutComponent::StartFire()
     bDryFirePlayed=false;bFireHeld=true;Fire();
 }
 void UPlayerLoadoutComponent::StopFire() { bFireHeld=false;bDryFirePlayed=false; }
-void UPlayerLoadoutComponent::StopActions() { StopFire();if (Equipped) Equipped->CancelReloadAudio();bReloading=false;CloseMenu(); }
+void UPlayerLoadoutComponent::StopActions()
+{
+    StopFire();
+    if (Equipped)
+    {
+        Equipped->CancelReloadAudio();
+        Equipped->StopMeleeSwing();
+    }
+    bReloading=false;
+    CloseMenu();
+}
 void UPlayerLoadoutComponent::Fire()
 {
     UWeaponDefinition* Weapon = GetActiveWeapon();
@@ -279,7 +290,14 @@ void UPlayerLoadoutComponent::Fire()
         --Ammo;
     }
     if (Equipped->Attack(Weapon)) LastHitTime = Now;
-    NextAttackTime = Now + FMath::Max(.05f, Weapon->AttackInterval);
+    const float AttackInterval = FMath::Max(.05f, Weapon->AttackInterval);
+    NextAttackTime = Now + AttackInterval;
+    if (Weapon->Category == EWeaponCategory::Melee && Settings)
+    {
+        UAnimSequence* Swing = bNextMeleeSwingMirrored ? Settings->MeleeSwingMirrored.Get() : Settings->MeleeSwing.Get();
+        if (Equipped->PlayMeleeSwing(Swing, AttackInterval))
+            bNextMeleeSwingMirrored = !bNextMeleeSwingMirrored;
+    }
 }
 void UPlayerLoadoutComponent::Reload()
 {
@@ -335,8 +353,7 @@ void UPlayerLoadoutComponent::Equip()
     Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
     Equipped = GetWorld()->SpawnActor<AEquippedWeapon>(Weapon->WeaponClass, FTransform::Identity, Params);
     if (!Equipped) return;
-    Equipped->AttachToComponent(Character->GetFirstPersonCameraComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-    Equipped->SetActorRelativeTransform(Equipped->ViewTransform);
+    Equipped->AttachToPlayer(*Character);
     Equipped->ConfigureAudio(Weapon);Equipped->PlayEquip();
 }
 
@@ -372,6 +389,7 @@ void UPlayerLoadoutComponent::RestoreState(const FLoadoutState& Saved)
             State.Magazines.FindOrAdd(Id) = FMath::Clamp(State.Magazines.FindRef(Id),0,FMath::Max(1,Weapon->MagazineSize));
     Message.Reset();Notice.Reset();NoticeUntil=0.f;GainUntil=0.f;
     Equip();
+    RefreshArmor();
 }
 bool UPlayerLoadoutComponent::LoadDawn(int32& Day)
 {

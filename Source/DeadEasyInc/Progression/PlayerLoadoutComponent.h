@@ -62,6 +62,9 @@ public:
     UFUNCTION(BlueprintCallable) bool Craft(FName Id);
     FString ToolStatus(const UToolDefinition* Tool) const;
     bool CraftTool(FName Id);
+    FString ArmorStatus(const UArmorDefinition* Armor) const;
+    bool CraftArmor(FName Id);
+    float GetZombieDamageReduction() const { return ZombieDamageReduction; }
     TMap<FName,int32> CraftCost(const TMap<FName,int32>& Base) const;
     void SelectWork();
     void RefreshWeapon() { Equip(); }
@@ -87,6 +90,9 @@ protected:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
     UWeaponDefinition* FindWeapon(FName Id) const;
+    const UArmorDefinition* FindArmor(FName Id) const;
+    void RefreshArmor();
+    float ZombieDamageReduction = 0.f;
     bool CanAct() const;
     bool CanUseStation(bool bResearch) const;
     bool CanAfford(const TMap<FName,int32>& Cost) const;
@@ -103,6 +109,7 @@ private:
     TWeakObjectPtr<AProgressionStation> OpenStation;
     TWeakObjectPtr<class AGateSwitch> NightSwitch;
     bool bFireHeld = false;
+    bool bNextMeleeSwingMirrored = false;
     bool bDryFirePlayed=false;
     float NextAttackTime = 0.f;
     float ReloadEndTime = 0.f;

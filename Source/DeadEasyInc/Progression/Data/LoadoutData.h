@@ -6,6 +6,25 @@
 #include "LoadoutData.generated.h"
 
 class AEquippedWeapon;
+class USkeletalMesh;
+
+UENUM(BlueprintType)
+enum class EArmorSlot : uint8 { Chest, Head, Hands, Legs, Feet };
+
+UCLASS(BlueprintType)
+class DEADEASYINC_API UArmorDefinition : public UDataAsset
+{
+    GENERATED_BODY()
+public:
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FName Id;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FText DisplayName;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) EArmorSlot Slot = EArmorSlot::Chest;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) TObjectPtr<USkeletalMesh> WorldMesh;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) FName RequiredResearch;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly) TMap<FName, int32> CraftCost;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) int32 RequiredWorkbenchLevel = 1;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0", ClampMax="0.90")) float ZombieDamageReduction = 0.f;
+};
 UENUM(BlueprintType)
 enum class EWeaponCategory : uint8 { Ranged, Melee };
 
@@ -46,6 +65,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TMap<FName, int32> CraftCost;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) int32 RequiredWorkbenchLevel = 1;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TSubclassOf<AEquippedWeapon> WeaponClass;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Animation") TObjectPtr<class UAnimSequence> HoldAnimation;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="0")) float Damage = 25.f;
     UPROPERTY(EditAnywhere,BlueprintReadOnly,meta=(ClampMin="1")) float HeadshotMultiplier=3.f;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, meta=(ClampMin="1")) float Range = 10000.f;
@@ -80,6 +100,10 @@ class DEADEASYINC_API ULoadoutSettings : public UDataAsset
 public:
     UPROPERTY(EditAnywhere,BlueprintReadOnly) TArray<TObjectPtr<class UToolDefinition>> Tools;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<TObjectPtr<UWeaponDefinition>> Weapons;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Melee") TObjectPtr<class UAnimSequence> MeleeSwing;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Melee") TObjectPtr<class UAnimSequence> MeleeSwingMirrored;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Armor") TArray<TObjectPtr<UArmorDefinition>> Armor;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Armor") TMap<EArmorSlot, TObjectPtr<USkeletalMesh>> ArmorBaseMeshes;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<TObjectPtr<UResearchDefinition>> Research;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TMap<FName, int32> StartingResources;
     UPROPERTY(EditAnywhere, BlueprintReadOnly) TArray<FName> StartingWeapons;
@@ -113,6 +137,8 @@ struct FLoadoutState
     UPROPERTY(EditAnywhere, BlueprintReadWrite) FName Melee;
     UPROPERTY(EditAnywhere, BlueprintReadWrite) EWeaponCategory ActiveCategory = EWeaponCategory::Melee;
     UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FName> OwnedTools;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) TArray<FName> OwnedArmor;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite) TMap<EArmorSlot, FName> EquippedArmor;
     UPROPERTY() TArray<FCorpseCargo> Backpack;
     UPROPERTY() TArray<FCorpseCargo> Cart;
 };

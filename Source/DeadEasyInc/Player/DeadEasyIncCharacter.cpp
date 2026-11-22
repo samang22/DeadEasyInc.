@@ -8,6 +8,9 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Components/SceneComponent.h"
+#include "Engine/SkeletalMesh.h"
+#include "Engine/World.h"
 #include "EnhancedInputComponent.h"
 #include "InputActionValue.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -16,6 +19,7 @@
 #include "Player/Data/PlayerSettings.h"
 #include "Interaction/BuildingRepairComponent.h"
 #include "NiagaraComponent.h"
+#include "Zombies/BorderZombie.h"
 
 ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 {
@@ -33,6 +37,9 @@ ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 	FirstPersonMesh->SetOnlyOwnerSee(true);
 	FirstPersonMesh->FirstPersonPrimitiveType = EFirstPersonPrimitiveType::FirstPerson;
 	FirstPersonMesh->SetCollisionProfileName(FName("NoCollision"));
+
+    WeaponMount = CreateDefaultSubobject<USceneComponent>(TEXT("WeaponMount"));
+    WeaponMount->SetupAttachment(FirstPersonMesh, TEXT("hand_r"));
 
 	// Create the Camera Component	
 	FirstPersonCameraComponent = CreateDefaultSubobject<UCameraComponent>(TEXT("First Person Camera"));
@@ -62,15 +69,118 @@ ADeadEasyIncCharacter::ADeadEasyIncCharacter()
 	
 }
 
+#if WITH_EDITOR
+void ADeadEasyIncCharacter::OnConstruction(const FTransform& Transform)
+{
+    Super::OnConstruction(Transform);
+    if (!GetWorld() || GetWorld()->WorldType != EWorldType::EditorPreview) return;
+
+    TArray<USkeletalMesh*> PreviewMeshes;
+    for (USkeletalMesh* PartMesh : FirstPersonAppearance)
+        if (PartMesh) PreviewMeshes.Add(PartMesh);
+
+    const bool bHasFirstPersonParts = !PreviewMeshes.IsEmpty();
+    if (const ULoadoutSettings* LoadoutSettings = Loadout->Settings)
+    {
+        const EArmorSlot Slots[] = { EArmorSlot::Head, EArmorSlot::Legs, EArmorSlot::Feet, EArmorSlot::Chest, EArmorSlot::Hands };
+        for (EArmorSlot Slot : Slots)
+        {
+            if (bHasFirstPersonParts && (Slot == EArmorSlot::Chest || Slot == EArmorSlot::Hands)) continue;
+            if (USkeletalMesh* PartMesh = LoadoutSettings->ArmorBaseMeshes.FindRef(Slot).Get())
+                PreviewMeshes.Add(PartMesh);
+        }
+    }
+
+    const auto* Defaults = GetClass()->GetDefaultObject<ADeadEasyIncCharacter>();
+    const bool bHasPreview = !PreviewMeshes.IsEmpty();
+    GetMesh()->SetVisibility(!bHasPreview && Defaults->GetMesh()->GetVisibleFlag());
+    FirstPersonMesh->SetVisibility(!bHasPreview && Defaults->FirstPersonMesh->GetVisibleFlag());
+    for (USkeletalMesh* PartMesh : PreviewMeshes)
+        AddAppearancePart(*FirstPersonMesh, PartMesh, true);
+}
+#endif
+
 void ADeadEasyIncCharacter::BeginPlay()
 {
     Super::BeginPlay();
+    if (FirstPersonAppearance.ContainsByPredicate([](const USkeletalMesh* PartMesh) { return PartMesh != nullptr; }))
+    {
+        FirstPersonMesh->SetVisibility(false);
+        FirstPersonMesh->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+        for (USkeletalMesh* PartMesh : FirstPersonAppearance)
+            if (PartMesh) AddAppearancePart(*FirstPersonMesh, PartMesh);
+    }
     if (Settings)
     {
         if (UCombatHealthComponent* HealthComponent = FindComponentByClass<UCombatHealthComponent>())
         {
             HealthComponent->MaxHealth = FMath::Max(1.f, Settings->MaxHealth);
             HealthComponent->Health = HealthComponent->MaxHealth;
+        }
+    }
+}
+
+float ADeadEasyIncCharacter::TakeDamage(float DamageAmount, const FDamageEvent& DamageEvent,
+    AController* EventInstigator, AActor* DamageCauser)
+{
+    if (Loadout && Cast<ABorderZombie>(DamageCauser))
+        DamageAmount *= 1.f - Loadout->GetZombieDamageReduction();
+    return Super::TakeDamage(DamageAmount, DamageEvent, EventInstigator, DamageCauser);
+}
+
+USkeletalMeshComponent* ADeadEasyIncCharacter::AddAppearancePart(USkeletalMeshComponent& Leader, USkeletalMesh* PartMesh, bool bEditorPreview)
+{
+    auto* Part = NewObject<USkeletalMeshComponent>(this, NAME_None, RF_Transient);
+    Part->SetupAttachment(&Leader);
+    Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Part->SetGenerateOverlapEvents(false);
+    if (bEditorPreview)
+    {
+        Part->CreationMethod = EComponentCreationMethod::UserConstructionScript;
+    }
+    else
+    {
+        Part->SetOnlyOwnerSee(Leader.bOnlyOwnerSee);
+        Part->SetOwnerNoSee(Leader.bOwnerNoSee);
+        Part->FirstPersonPrimitiveType = Leader.FirstPersonPrimitiveType;
+    }
+    Part->bUseBoundsFromLeaderPoseComponent = true;
+    Part->SetSkeletalMeshAsset(PartMesh);
+    Part->RegisterComponent();
+    Part->SetLeaderPoseComponent(&Leader, true);
+    return Part;
+}
+
+void ADeadEasyIncCharacter::SetArmorAppearance(const TArray<USkeletalMesh*>& Meshes)
+{
+    USkeletalMeshComponent* Leader = GetMesh();
+    if (ArmorMeshes.IsEmpty() && !Meshes.IsEmpty())
+    {
+        bSavedMeshVisibility = Leader->GetVisibleFlag();
+        SavedMeshTickOption = Leader->VisibilityBasedAnimTickOption;
+        Leader->SetVisibility(false);
+        Leader->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::AlwaysTickPoseAndRefreshBones;
+    }
+    if (!ArmorMeshes.IsEmpty() && Meshes.IsEmpty())
+    {
+        Leader->SetVisibility(bSavedMeshVisibility);
+        Leader->VisibilityBasedAnimTickOption = SavedMeshTickOption;
+    }
+    while (ArmorMeshes.Num() > Meshes.Num())
+    {
+        USkeletalMeshComponent* Part = ArmorMeshes.Pop();
+        Part->DestroyComponent();
+    }
+    for (int32 Index = 0; Index < Meshes.Num(); ++Index)
+    {
+        if (!ArmorMeshes.IsValidIndex(Index))
+        {
+            ArmorMeshes.Add(AddAppearancePart(*Leader, Meshes[Index]));
+        }
+        else if (ArmorMeshes[Index]->GetSkeletalMeshAsset() != Meshes[Index])
+        {
+            ArmorMeshes[Index]->SetSkeletalMeshAsset(Meshes[Index]);
+            ArmorMeshes[Index]->SetLeaderPoseComponent(Leader, true);
         }
     }
 }

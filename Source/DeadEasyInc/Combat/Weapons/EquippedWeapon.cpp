@@ -3,6 +3,12 @@
 #include "Progression/Data/LoadoutData.h"
 #include "Zombies/BorderZombie.h"
 #include "Components/StaticMeshComponent.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "Animation/AnimSequence.h"
+#include "Camera/CameraComponent.h"
+#include "Player/DeadEasyIncCharacter.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -12,9 +18,13 @@
 
 static TAutoConsoleVariable<int32> CVarDamageDebug(TEXT("de.DamageDebug"),0,TEXT("Show weapon traces, bones and damage (0/1)."),ECVF_Cheat);
 
+namespace
+{
+    constexpr float MeleeBlendOut = .16f;
+}
+
 AEquippedWeapon::AEquippedWeapon()
 {
-    PrimaryActorTick.bCanEverTick = true;
     RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
     WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
     AttachmentMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("AttachmentMesh"));
@@ -30,10 +40,55 @@ AEquippedWeapon::AEquippedWeapon()
     WeaponAudio = CreateDefaultSubobject<UWeaponAudioComponent>(TEXT("WeaponAudio"));
 }
 
-void AEquippedWeapon::Tick(float DeltaSeconds)
+void AEquippedWeapon::AttachToPlayer(ADeadEasyIncCharacter& Character)
 {
-    Super::Tick(DeltaSeconds);
-    SetActorRelativeLocation(FMath::VInterpTo(GetRootComponent()->GetRelativeLocation(), ViewTransform.GetLocation(), DeltaSeconds, 18.f));
+    const USkeletalMeshComponent* FirstPerson = Character.GetFirstPersonMesh();
+    USceneComponent* Mount = Character.GetWeaponMount();
+    if (Mount && FirstPerson && FirstPerson->DoesSocketExist(Mount->GetAttachSocketName()) &&
+        AttachToComponent(Mount, FAttachmentTransformRules::SnapToTargetNotIncludingScale))
+    {
+        WeaponMesh->FirstPersonPrimitiveType = FirstPerson->FirstPersonPrimitiveType;
+        AttachmentMesh->FirstPersonPrimitiveType = FirstPerson->FirstPersonPrimitiveType;
+        SetActorRelativeTransform(FTransform(HandGripRotation, HandGripLocation, ViewTransform.GetScale3D()));
+        return;
+    }
+
+    AttachToComponent(Character.GetFirstPersonCameraComponent(), FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+    SetActorRelativeTransform(ViewTransform);
+}
+
+UAnimMontage* AEquippedWeapon::PlayUpperBodyAnimation(UAnimSequence* Sequence, FName Slot, float BlendIn, float BlendOut, float Rate)
+{
+    if (!Sequence) return nullptr;
+    const auto* Character = Cast<ADeadEasyIncCharacter>(GetOwner());
+    auto* Body = Character ? Character->GetMesh() : nullptr;
+    auto* AnimInstance = Body ? Body->GetAnimInstance() : nullptr;
+    if (!AnimInstance) return nullptr;
+
+    UAnimMontage* Montage = UAnimMontage::CreateSlotAnimationAsDynamicMontage(Sequence, Slot, BlendIn, BlendOut, Rate);
+    if (!Montage || AnimInstance->Montage_Play(Montage, Rate, EMontagePlayReturnType::MontageLength, 0.f, false) <= 0.f)
+        return nullptr;
+
+    BodyAnimInstance = AnimInstance;
+    return Montage;
+}
+
+bool AEquippedWeapon::PlayMeleeSwing(UAnimSequence* Sequence, float AttackInterval)
+{
+    if (!Sequence) return false;
+    const float Rate = FMath::Max(1.f, Sequence->GetPlayLength() / AttackInterval);
+    UAnimMontage* Montage = PlayUpperBodyAnimation(Sequence, TEXT("MeleeUpperBody"), .05f, MeleeBlendOut, Rate);
+    if (!Montage) return false;
+    MeleeMontage = Montage;
+    return true;
+}
+
+void AEquippedWeapon::StopMeleeSwing()
+{
+    if (!MeleeMontage) return;
+    if (UAnimInstance* AnimInstance = BodyAnimInstance.Get())
+        AnimInstance->Montage_Stop(.07f, MeleeMontage);
+    MeleeMontage = nullptr;
 }
 
 bool AEquippedWeapon::Attack(const UWeaponDefinition* Definition)
@@ -55,7 +110,7 @@ bool AEquippedWeapon::Attack(const UWeaponDefinition* Definition)
     FCollisionQueryParams Params(SCENE_QUERY_STAT(PlayerWeapon), false, Pawn);
     Params.AddIgnoredActor(this);
     Params.bReturnPhysicalMaterial=true;
-    // There is no bound attack montage: this is the actual instantaneous attack window.
+    // The gameplay hit window remains instantaneous while the swing animation plays visually.
     WeaponAudio->PlayWeaponSound(bMelee ? (Definition->Audio.SwingSound ? Definition->Audio.SwingSound.Get() : AttackSound.Get()) :
         (Definition->Audio.FireSound ? Definition->Audio.FireSound.Get() : AttackSound.Get()));
     for (int32 Index=0; Index<Count; ++Index)
@@ -99,7 +154,6 @@ bool AEquippedWeapon::Attack(const UWeaponDefinition* Definition)
             Loadout->DamageDebugText=Hits>0 ? FString::Printf(TEXT("Bone %s | Hits %d / Head %d | Damage %.0f (applied %.0f) | HP %.0f"),*LastBone.ToString(),Hits,HeadHits,RequestedDamage,AppliedDamage,RemainingHealth) : TEXT("MISS / BLOCKED - no living zombie damaged");
         }
     }
-    SetActorRelativeLocation(ViewTransform.GetLocation() + FVector(-3,0,bMelee ? -3 : 1));
     return bHitZombie;
 }
 
@@ -109,7 +163,17 @@ void AEquippedWeapon::ConfigureAudio(UWeaponDefinition* Definition)
     WeaponAudio->Configure(Definition);
 }
 
-void AEquippedWeapon::PlayEquip() { WeaponAudio->PlayEquip(); }
+void AEquippedWeapon::PlayEquip()
+{
+    WeaponAudio->PlayEquip();
+    if (WeaponDefinition)
+        HoldMontage = PlayUpperBodyAnimation(WeaponDefinition->HoldAnimation, TEXT("WeaponHold"), .18f, .18f, 1.f);
+    if (HoldMontage)
+    {
+        const FName Section = HoldMontage->GetSectionName(0);
+        BodyAnimInstance->Montage_SetNextSection(Section, Section, HoldMontage);
+    }
+}
 void AEquippedWeapon::PlayUnequip() { WeaponAudio->PlayUnequip(); }
 void AEquippedWeapon::PlayDryFire() { WeaponAudio->PlayDryFire(); }
 void AEquippedWeapon::PlayReload() { WeaponAudio->PlayReload(ReloadSound); }
@@ -117,5 +181,10 @@ void AEquippedWeapon::CancelReloadAudio() { WeaponAudio->CancelReloadAudio(); }
 
 void AEquippedWeapon::EndPlay(const EEndPlayReason::Type Reason)
 {
-    CancelReloadAudio();Super::EndPlay(Reason);
+    CancelReloadAudio();
+    StopMeleeSwing();
+    if (HoldMontage)
+        if (UAnimInstance* AnimInstance = BodyAnimInstance.Get())
+            AnimInstance->Montage_Stop(.18f, HoldMontage);
+    Super::EndPlay(Reason);
 }
