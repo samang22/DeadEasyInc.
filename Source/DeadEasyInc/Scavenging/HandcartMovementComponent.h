@@ -10,19 +10,20 @@ class DEADEASYINC_API UHandcartMovementComponent : public UActorComponent
     GENERATED_BODY()
 public:
     UHandcartMovementComponent();
-    void Configure(class UScavengingSettings* InSettings,class UBoxComponent* InCollision,class USceneComponent* InWheelAxle);
+    void Configure(class UScavengingSettings* InSettings, class UBoxComponent* InCollision,
+                   class USceneComponent* InWheelAxle, class USceneComponent* InGroundContact);
+    static bool HasGroundClearance(const UBoxComponent* Box, const USceneComponent* Contact);
     void BeginPush(class APawn* Player);
     void EndPush(class APawn* Player);
-    void ResetMotion();
-    bool SnapToGround(class APawn* Player);
-    void Advance(float Dt,class APawn* Player);
+    bool SnapToGround(class APawn* Player, bool bOnlyIfBelowGround = false);
+    void Advance(class APawn* Player);
     void UpdateWheelRoll();
 private:
+    FVector GetGroundContactOffset(const FQuat& Rotation) const;
     UPROPERTY(Transient) TObjectPtr<class UScavengingSettings> Settings;
     UPROPERTY(Transient) TObjectPtr<class UBoxComponent> Collision;
     UPROPERTY(Transient) TObjectPtr<class USceneComponent> WheelAxle;
+    UPROPERTY(Transient) TObjectPtr<USceneComponent> GroundContact;
     float NormalSpeed=500.f;
     FVector LastWheelLocation=FVector::ZeroVector;
-    FVector FollowVelocity=FVector::ZeroVector;
-    float FollowYawRate=0.f;
 };

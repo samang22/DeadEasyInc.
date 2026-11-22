@@ -15,6 +15,12 @@ public:
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UBoxComponent> GrabTarget;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class USceneComponent> BedPivot;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class USceneComponent> WheelAxle;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Handcart|Ground")
+    TObjectPtr<USceneComponent> GroundContact;
+
+#if WITH_EDITOR
+    virtual void CheckForErrors() override;
+#endif
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class USceneComponent> TailgatePivot;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UStaticMeshComponent> Tailgate;
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TObjectPtr<class UBoxComponent> TailgateCollision;

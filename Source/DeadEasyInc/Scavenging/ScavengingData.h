@@ -52,5 +52,5 @@ public:
     UPROPERTY(EditAnywhere,meta=(ClampMin="0.5")) float CartSpillSeconds=3.f;
     UPROPERTY(EditAnywhere,meta=(ClampMin="0")) float CartSpillAcceleration=150.f;
     UPROPERTY(EditAnywhere) TSubclassOf<class ABorderZombie> CorpseClass;
-    UPROPERTY(EditAnywhere,meta=(ClampMin="0.5")) float ProcessingSeconds=1.f;
+    UPROPERTY(EditAnywhere,meta=(ClampMin="0.1")) float ProcessingSeconds=.1f;
 };

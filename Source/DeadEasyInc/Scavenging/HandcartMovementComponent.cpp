@@ -7,141 +7,92 @@
 #include "Engine/World.h"
 
 UHandcartMovementComponent::UHandcartMovementComponent() { PrimaryComponentTick.bCanEverTick=false; }
-void UHandcartMovementComponent::Configure(UScavengingSettings* InSettings,UBoxComponent* InCollision,USceneComponent* InWheelAxle)
+void UHandcartMovementComponent::Configure(UScavengingSettings* InSettings, UBoxComponent* InCollision,
+                                           USceneComponent* InWheelAxle, USceneComponent* InGroundContact)
 {
     if (!Collision) LastWheelLocation=GetOwner()->GetActorLocation();
     Settings=InSettings;Collision=InCollision;WheelAxle=InWheelAxle;
+    GroundContact = InGroundContact;
 }
-void UHandcartMovementComponent::ResetMotion() { FollowVelocity=FVector::ZeroVector;FollowYawRate=0.f; }
 void UHandcartMovementComponent::BeginPush(APawn* Player)
 {
-    ResetMotion();LastWheelLocation=GetOwner()->GetActorLocation();
+    SnapToGround(Player, true);
+    LastWheelLocation=GetOwner()->GetActorLocation();
+    if (Collision) Collision->IgnoreActorWhenMoving(Player, true);
     if (auto* Character=Cast<ACharacter>(Player))
     { NormalSpeed=Character->GetCharacterMovement()->MaxWalkSpeed;Character->GetCharacterMovement()->MaxWalkSpeed=FMath::Min(NormalSpeed,Settings ? Settings->CartSpeed : 350.f); }
 }
 void UHandcartMovementComponent::EndPush(APawn* Player)
 {
     if (auto* Character=Cast<ACharacter>(Player)) Character->GetCharacterMovement()->MaxWalkSpeed=NormalSpeed;
-    ResetMotion();
+    if (Collision && Player) Collision->IgnoreActorWhenMoving(Player, false);
 }
-bool UHandcartMovementComponent::SnapToGround(APawn* Player)
+bool UHandcartMovementComponent::HasGroundClearance(const UBoxComponent* Box, const USceneComponent* Contact)
+{
+    constexpr float MinimumClearanceCm = 1.f;
+    return IsValid(Box) && IsValid(Contact) &&
+        Box->GetComponentLocation().Z - Contact->GetComponentLocation().Z >= Box->Bounds.BoxExtent.Z + MinimumClearanceCm - KINDA_SMALL_NUMBER;
+}
+
+FVector UHandcartMovementComponent::GetGroundContactOffset(const FQuat& Rotation) const
+{
+    const AActor* Cart = GetOwner();
+    const FVector Offset = GroundContact->GetComponentLocation() - Cart->GetActorLocation();
+    return Rotation.RotateVector(Cart->GetActorQuat().UnrotateVector(Offset));
+}
+
+bool UHandcartMovementComponent::SnapToGround(APawn* Player, bool bOnlyIfBelowGround)
 {
     AActor* Cart=GetOwner();
+    if (!HasGroundClearance(Collision, GroundContact)) return false;
     FHitResult Hit;FCollisionQueryParams Params(SCENE_QUERY_STAT(CartGround),false,Cart);
     if (Player) Params.AddIgnoredActor(Player);
     const FVector Start=Cart->GetActorLocation();
-    if (!GetWorld()->LineTraceSingleByObjectType(Hit,Start+FVector(0,0,200),Start-FVector(0,0,800),FCollisionObjectQueryParams(ECC_WorldStatic),Params)) return false;
+    const FVector Contact = GroundContact->GetComponentLocation();
+    if (!GetWorld()->LineTraceSingleByObjectType(Hit,Contact+FVector(0,0,200),Contact-FVector(0,0,800),FCollisionObjectQueryParams(ECC_WorldStatic),Params)) return false;
     if (Hit.ImpactNormal.Z<.65f) return false;
-    FVector Position=Start;Position.Z=Hit.ImpactPoint.Z+(Settings ? FMath::Max(1.f,Settings->CartWheelRadius) : 51.f)*FMath::Abs(Cart->GetActorScale3D().Z);Cart->SetActorLocation(Position);LastWheelLocation=Position;return true;
+    const FVector Extent = Collision->GetScaledBoxExtent();
+    const double GroundedZ = Start.Z + Hit.ImpactPoint.Z - Contact.Z;
+    if (bOnlyIfBelowGround && Start.Z >= GroundedZ - KINDA_SMALL_NUMBER) return true;
+
+    FVector Position = Start;
+    Position.Z = GroundedZ;
+    if (GetWorld()->OverlapBlockingTestByChannel(Position, Cart->GetActorQuat(),
+        Collision->GetCollisionObjectType(), FCollisionShape::MakeBox(Extent), Params,
+        FCollisionResponseParams(Collision->GetCollisionResponseToChannels())))
+        return false;
+
+    // A sweep would start inside the ground when recovering a low placed cart.
+    Cart->SetActorLocation(Position, false, nullptr, ETeleportType::TeleportPhysics);
+    LastWheelLocation = Position;
+    return true;
 }
-void UHandcartMovementComponent::Advance(float Dt,APawn* Player)
+void UHandcartMovementComponent::Advance(APawn* Player)
 {
-    if (!IsValid(Player) || !Collision) return;
-    AActor* Cart=GetOwner();
-    const float TurnSpeed =
-        Settings ? Settings->CartTurnSpeed : 90.f;
-
-    const float MoveSpeed =
-        Settings ? Settings->CartSpeed : 350.f;
-
-    const float PushDistance =
-        Settings ? Settings->CartPushDistance : 200.f;
-
-    const float WheelRadius =
-        Settings
-            ? FMath::Max(1.f, Settings->CartWheelRadius)
-            : 51.f;
-
-    // Player 시선 방향
-    const FRotator Wanted(
-        0.f,
-        Player->GetViewRotation().Yaw,
-        0.f
-    );
-
-    // 목표 회전
-    const float YawDelta=FMath::FindDeltaAngleDegrees(Cart->GetActorRotation().Yaw,Wanted.Yaw);
-    const float TargetYawRate=FMath::Clamp(YawDelta/.18f,-TurnSpeed,TurnSpeed);
-    FollowYawRate=FMath::FInterpConstantTo(FollowYawRate,TargetYawRate,Dt,Settings ? Settings->CartTurnAcceleration : 240.f);
-    const float YawStep=FMath::Clamp(FollowYawRate*Dt,-FMath::Abs(YawDelta),FMath::Abs(YawDelta));
-    const FRotator Rotation(0.f,Cart->GetActorRotation().Yaw+YawStep,0.f);
-
-    // 목표 위치
-    FVector Desired =
-        Player->GetActorLocation() +
-        Wanted.Vector() * PushDistance;
-
+    if (!IsValid(Player) || !HasGroundClearance(Collision, GroundContact)) return;
+    AActor* Cart = GetOwner();
+    const FRotator Rotation(0.f, Player->GetViewRotation().Yaw, 0.f);
+    const float PushDistance = Settings ? Settings->CartPushDistance : 200.f;
+    FVector Desired = Player->GetActorLocation() + Rotation.Vector() * PushDistance;
     Desired.Z = Cart->GetActorLocation().Z;
 
-    // 충돌 검사 파라미터
-    FCollisionQueryParams Params(
-        SCENE_QUERY_STAT(CartMove),
-        false,
-        Cart
-    );
-
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(CartMove), false, Cart);
     Params.AddIgnoredActor(Player);
-
-    // 지면 탐색
+    const FVector ContactOffset = GetGroundContactOffset(Rotation.Quaternion());
+    const FVector Contact = Desired + ContactOffset;
     FHitResult Ground;
+    if (!GetWorld()->LineTraceSingleByObjectType(Ground, Contact + FVector(0, 0, 100), Contact - FVector(0, 0, 250),
+        FCollisionObjectQueryParams(ECC_WorldStatic), Params) || Ground.ImpactNormal.Z <= .65f)
+        return;
 
-    const bool bHasGround =
-        GetWorld()->LineTraceSingleByObjectType(
-            Ground,
-            Desired + FVector(0.f, 0.f, 100.f),
-            Desired - FVector(0.f, 0.f, 250.f),
-            FCollisionObjectQueryParams(ECC_WorldStatic),
-            Params
-        );
+    Desired.Z = Ground.ImpactPoint.Z - ContactOffset.Z;
+    // Test the final orientation as the movement sweep does not sweep rotation itself.
+    if (GetWorld()->OverlapBlockingTestByChannel(Desired, Rotation.Quaternion(), Collision->GetCollisionObjectType(),
+        FCollisionShape::MakeBox(Collision->GetScaledBoxExtent()), Params,
+        FCollisionResponseParams(Collision->GetCollisionResponseToChannels())))
+        return;
 
-    if (bHasGround && Ground.ImpactNormal.Z > 0.65f)
-    {
-        // 바퀴 높이 보정
-        Desired.Z =
-            Ground.ImpactPoint.Z +
-            WheelRadius * FMath::Abs(Cart->GetActorScale3D().Z);
-
-        // 이동 보간
-        const FVector Delta=Desired-Cart->GetActorLocation();
-        const FVector DesiredVelocity=Delta.GetSafeNormal()*FMath::Min(MoveSpeed,Delta.Size()/.18f);
-        const bool bDecelerating=DesiredVelocity.SizeSquared()<FollowVelocity.SizeSquared();
-        const float Acceleration=Settings ? (bDecelerating ? Settings->CartDeceleration : Settings->CartAcceleration) : (bDecelerating ? 1200.f : 800.f);
-        FollowVelocity=FMath::VInterpConstantTo(FollowVelocity,DesiredVelocity,Dt,FMath::Max(1.f,Acceleration));
-        FVector Travel=FollowVelocity*Dt;
-        if (Travel.SizeSquared()>Delta.SizeSquared()) Travel=Delta;
-        const FVector Step=Cart->GetActorLocation()+Travel;
-
-        // 회전된 박스 충돌 영역 검사
-        const bool bBlocked =
-            GetWorld()->OverlapBlockingTestByChannel(
-                Step,
-                Rotation.Quaternion(),
-                Collision->GetCollisionObjectType(),
-                FCollisionShape::MakeBox(
-                    Collision->GetScaledBoxExtent()
-                ),
-                Params,
-                FCollisionResponseParams(
-                    Collision->GetCollisionResponseToChannels()
-                )
-            );
-
-        if (!bBlocked)
-        {
-            FHitResult Hit;
-
-            Cart->SetActorLocationAndRotation(
-                Step,
-                Rotation,
-                true,
-                &Hit,
-                ETeleportType::None
-            );
-            if (Hit.bBlockingHit) { FollowVelocity=FVector::ZeroVector;FollowYawRate=0.f; }
-        }
-        else { FollowVelocity=FVector::ZeroVector;FollowYawRate=0.f; }
-    }
-    else { FollowVelocity=FVector::ZeroVector;FollowYawRate=0.f; }
+    Cart->SetActorLocationAndRotation(Desired, Rotation, true, nullptr, ETeleportType::None);
 }
 
 void UHandcartMovementComponent::UpdateWheelRoll()

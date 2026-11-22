@@ -9,6 +9,9 @@
 #include "Core/BorderGameMode.h"
 #include "Engine/World.h"
 #include "Progression/PlayerLoadoutComponent.h"
+#if WITH_EDITOR
+#include "Logging/MessageLog.h"
+#endif
 
 AHandcart::AHandcart()
 {
@@ -34,6 +37,9 @@ AHandcart::AHandcart()
 
     // 이동 가능한 액터
     Collision->SetMobility(EComponentMobility::Movable);    
+    GroundContact = CreateDefaultSubobject<USceneComponent>(TEXT("GroundContact"));
+    GroundContact->SetupAttachment(Collision);
+    GroundContact->SetRelativeLocation(FVector(0.f, 0.f, -52.f));
     GrabTarget=CreateDefaultSubobject<UBoxComponent>(TEXT("GrabTarget"));GrabTarget->SetupAttachment(RootComponent);
     InteractionArea=GrabTarget; // Alias, not a second collider: preserve existing BP transforms.
     GrabTarget->SetGenerateOverlapEvents(false);
@@ -66,10 +72,11 @@ AHandcart::AHandcart()
     CargoVolume->SetCollisionResponseToAllChannels(ECR_Ignore);
     CargoVolume->SetCollisionResponseToChannel(ECC_GameTraceChannel3,ECR_Overlap);
     CargoVolume->SetGenerateOverlapEvents(true);CargoVolume->SetCanEverAffectNavigation(false);
+
     CargoFloor=CreateDefaultSubobject<UBoxComponent>(TEXT("CargoFloor"));
     CargoFloor->SetupAttachment(Bed);
     ConfigureCargoBox(CargoFloor);
-    for (int32 Index=0;Index<4;++Index)
+    for (int32 Index=0;Index<3;++Index)
     {
         auto* Wall=CreateDefaultSubobject<UBoxComponent>(*FString::Printf(TEXT("CargoWall%d"),Index));
         Wall->SetupAttachment(Bed);ConfigureCargoBox(Wall);
@@ -80,7 +87,7 @@ AHandcart::AHandcart()
     TailgateClosingArea=CreateDefaultSubobject<UBoxComponent>(TEXT("TailgateClosingArea"));TailgateClosingArea->SetupAttachment(Bed);
     TailgateClosingArea->SetCollisionEnabled(ECollisionEnabled::NoCollision);TailgateClosingArea->SetCanEverAffectNavigation(false);
     HandleMesh=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("HandleMesh"));HandleMesh->SetupAttachment(RootComponent);
-    for (int32 Index=0;Index<4;++Index)
+    for (int32 Index=0;Index<2;++Index)
     {
         auto* Wheel=CreateDefaultSubobject<UStaticMeshComponent>(*FString::Printf(TEXT("Wheel%d"),Index));Wheel->SetupAttachment(WheelAxle);
         Wheel->SetCollisionEnabled(ECollisionEnabled::NoCollision);Wheel->SetCanEverAffectNavigation(false);Wheels.Add(Wheel);
@@ -109,10 +116,14 @@ void AHandcart::BeginPlay()
     CargoStorage->OnAttached.AddUObject(this,&AHandcart::HandleCargoAttached);
     CargoStorage->Configure(Settings,CargoVolume);
     SetActorTickEnabled(false);
-    CartMovement->Configure(Settings,Collision,WheelAxle);
+    CartMovement->Configure(Settings,Collision,WheelAxle,GroundContact);
     Discharge->Configure(Settings,BedPivot,TailgatePivot,TailgateClosingArea);
+    
     Bed->AttachToComponent(BedPivot,FAttachmentTransformRules::KeepRelativeTransform);
-    for (auto* Wheel : {Wheels[0].Get(),Wheels[1].Get(),Wheels[2].Get(),Wheels[3].Get()}) Wheel->AttachToComponent(WheelAxle,FAttachmentTransformRules::KeepRelativeTransform);
+    if (IsValid(WheelAxle))
+        for (UStaticMeshComponent* Wheel : Wheels)
+            if (IsValid(Wheel) && Wheel->GetAttachParent() != WheelAxle)
+                Wheel->AttachToComponent(WheelAxle, FAttachmentTransformRules::KeepRelativeTransform);
     Collision->SetMobility(EComponentMobility::Movable);
     Collision->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
     Collision->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
@@ -124,9 +135,19 @@ void AHandcart::BeginPlay()
 bool AHandcart::SnapToGround()
 {
     if (!Settings) Settings=GetClass()->GetDefaultObject<AHandcart>()->Settings;
-    CartMovement->Configure(Settings,Collision,WheelAxle);
+    CartMovement->Configure(Settings,Collision,WheelAxle,GroundContact);
     return CartMovement->SnapToGround(Driver);
 }
+#if WITH_EDITOR
+void AHandcart::CheckForErrors()
+{
+    Super::CheckForErrors();
+    if (!IsDirectlyDriven() && !UHandcartMovementComponent::HasGroundClearance(Collision, GroundContact))
+        FMessageLog(TEXT("MapCheck")).Warning(FText::Format(
+            NSLOCTEXT("Handcart", "InvalidGroundContact", "{0}: GroundContact must be at least 1 cm below the root Collision box."),
+            FText::FromString(GetActorLabel())));
+}
+#endif
 bool AHandcart::CanInteract(APawn* User) const
 {
     return IsValid(User) && !User->ActorHasTag(TEXT("Dead")) && !Driver &&
@@ -181,7 +202,7 @@ bool AHandcart::Dump()
 {
     if (!Driver) return false;
     if (Discharge->IsActive()) { Discharge->RequestClose();return true; }
-    CartMovement->ResetMotion();Discharge->Start();SetActorTickEnabled(true);return true;
+    Discharge->Start();SetActorTickEnabled(true);return true;
 }
 
 void AHandcart::Tick(float Dt)
@@ -221,5 +242,5 @@ void AHandcart::Tick(float Dt)
 
 void AHandcart::EndPlay(const EEndPlayReason::Type Reason) { ReleaseCargo();CargoStorage->OnDetached.RemoveAll(this);CargoStorage->OnAttached.RemoveAll(this);Super::EndPlay(Reason); }
 
-void AHandcart::AdvanceDriverMovement(float Dt) { CartMovement->Advance(Dt, Driver); }
+void AHandcart::AdvanceDriverMovement(float Dt) { CartMovement->Advance(Driver); }
 void AHandcart::UpdateWheelVisuals() { CartMovement->UpdateWheelRoll(); }
