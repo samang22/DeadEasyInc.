@@ -93,6 +93,8 @@ void ABorderZombie::BeginPlay()
     WallTarget = nullptr;
     Navigation->InitializeRoute(*this);
     PlayAnimation(IdleAnimation, true);
+    if (bStartAsCorpse && HasAuthority())
+        UGameplayStatics::ApplyDamage(this, FMath::Max(1.f, Health), nullptr, nullptr, nullptr);
 }
 
 void ABorderZombie::EndPlay(const EEndPlayReason::Type Reason)

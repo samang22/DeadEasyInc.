@@ -54,7 +54,7 @@ bool ACorpseProcessor::SnapHousingToGround()
 void ACorpseProcessor::Tick(float Dt)
 {
     Super::Tick(Dt);
-    const auto* Mode=GetWorld()->GetAuthGameMode<ABorderGameMode>();
+    auto* Mode=GetWorld()->GetAuthGameMode<ABorderGameMode>();
     if (Condition==EBuildingCondition::Destroyed || (Mode && (Mode->bGameOver || Mode->bTransitioning || Mode->bIsNight))) { ResetProcessing();return; }
     auto* Pawn=UGameplayStatics::GetPlayerPawn(this,0);
     auto* Player=Pawn ? Pawn->FindComponentByClass<UPlayerLoadoutComponent>() : nullptr;
@@ -74,5 +74,6 @@ void ACorpseProcessor::Tick(float Dt)
     Player->ShowResourceGain(Wood,Iron,Fuel);
     ResetProcessing();
     for (ABorderZombie* Corpse : Consumed) if (IsValid(Corpse)) Corpse->Destroy();
+    if (Mode) Mode->RecordProcessedCorpses(Count);
     OnProcessed(Count);
 }

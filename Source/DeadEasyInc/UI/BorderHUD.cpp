@@ -58,6 +58,7 @@ void ABorderHUD::DrawHUD()
         }
         DrawNotifications(Loadout);
     }
+    if (Mode) DrawShiftGuide(*Mode, *Pawn);
     DrawLine(X - 4, Y, X + 4, Y, FLinearColor::White);
     DrawLine(X, Y - 4, X, Y + 4, FLinearColor::White);
     ABuilding* Wall = Repair->GetFocusedBuilding();

@@ -305,6 +305,7 @@ void ABorderGameMode::RetryFromDawn()
     if (!bGameOver || !Checkpoint->HasSnapshot()) return;
     GetWorldTimerManager().ClearTimer(RetryTimer);
     DayNumber = Checkpoint->Restore();
+    FirstShiftCorpsesProcessed = 0;
     bIsNight = false;
     bGameOver = false;
     bTransitioning = false;
@@ -313,4 +314,10 @@ void ABorderGameMode::RetryFromDawn()
     bWaveRegistered = false;
     BindDefeatConditions();
     ApplyPhase();
+}
+
+void ABorderGameMode::RecordProcessedCorpses(int32 Count)
+{
+    if (DayNumber == 1 && !bIsNight && !bTransitioning && !bGameOver)
+        FirstShiftCorpsesProcessed += FMath::Clamp(Count, 0, FirstShiftCorpseGoal - FirstShiftCorpsesProcessed);
 }

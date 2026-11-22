@@ -41,6 +41,9 @@ public:
     UFUNCTION(BlueprintCallable) void RegisterWaveSource(AActor* Source);
     UFUNCTION(BlueprintCallable) void ReportSpawningFinished(AActor* Source);
     UFUNCTION(BlueprintCallable) void RegisterNightZombie(class ABorderZombie* Zombie);
+    static constexpr int32 FirstShiftCorpseGoal = 3;
+    void RecordProcessedCorpses(int32 Count);
+    int32 GetFirstShiftCorpsesProcessed() const { return FirstShiftCorpsesProcessed; }
     UFUNCTION(BlueprintImplementableEvent, Category="Day Night") void OnPhaseChanged(bool IsNight, int32 Day);
     UFUNCTION(BlueprintImplementableEvent, Category="Game Over") void OnGameOver();
 protected:
@@ -57,6 +60,7 @@ private:
     void BindDefeatConditions();
     void ApplyPhase();
     bool bTransitionToNight=true;
+    int32 FirstShiftCorpsesProcessed = 0;
     FTimerHandle PhaseTimer;
     FTimerHandle RetryTimer;
     UPROPERTY() TObjectPtr<class ADayNightDirector> Director;

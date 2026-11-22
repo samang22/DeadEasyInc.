@@ -43,6 +43,8 @@ public:
     TObjectPtr<UAnimSequence> AttackAnimation;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Zombie")
     bool bDead = false;
+    UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category="Zombie")
+    bool bStartAsCorpse = false;
     TWeakObjectPtr<class AHandcart> Carrier;
     TWeakObjectPtr<class UTractorIntakeComponent> IntakeOwner; // Reservation while pulling or stored.
     TWeakObjectPtr<class ACorpseProcessor> ProcessingOwner;
