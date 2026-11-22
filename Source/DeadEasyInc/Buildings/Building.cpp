@@ -5,6 +5,7 @@
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Zombies/AI/BuildingTargetRegistry.h"
+#include "Zombies/BorderZombie.h"
 #include "Engine/World.h"
 #include "Components/BoxComponent.h"
 
@@ -29,9 +30,15 @@ float ABuilding::TakeDamage(float Amount,const FDamageEvent& Event,AController* 
 {
     const float PreviousHealth=CombatHealth->Health;
     const float Applied=Super::TakeDamage(Amount,Event,InstigatorController,Causer);
-    if (Applied>0.f && CombatHealth->Health<PreviousHealth && !IsActorBeingDestroyed() &&
-        Event.IsOfType(FPointDamageEvent::ClassID))
-        DamageDecals->AddHit(static_cast<const FPointDamageEvent&>(Event).HitInfo);
+    if (Applied <= 0.f || CombatHealth->Health >= PreviousHealth || IsActorBeingDestroyed())
+        return Applied;
+
+    const FHitResult* PointHit = Event.IsOfType(FPointDamageEvent::ClassID)
+        ? &static_cast<const FPointDamageEvent&>(Event).HitInfo : nullptr;
+    if (const ABorderZombie* Zombie = Cast<ABorderZombie>(Causer))
+        DamageDecals->AddSurfaceHit(*GetStaticMeshComponent(), Zombie->GetActorLocation(), PointHit);
+    else if (PointHit)
+        DamageDecals->AddHit(*PointHit);
     return Applied;
 }
 

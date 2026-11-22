@@ -3,6 +3,8 @@
 #include "Components/ActorComponent.h"
 #include "BuildingDamageDecalComponent.generated.h"
 
+class UMeshComponent;
+
 /** Bounded, persistent surface damage visuals. Does not handle health or damage. */
 UCLASS(ClassGroup=(Buildings),meta=(BlueprintSpawnableComponent))
 class DEADEASYINC_API UBuildingDamageDecalComponent : public UActorComponent
@@ -18,8 +20,10 @@ public:
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Damage Decals",meta=(ClampMin="1",Units="cm"))
     float MinimumDistance=40.f;
     void AddHit(const FHitResult& Hit);
+    void AddSurfaceHit(UMeshComponent& Mesh, const FVector& Origin, const FHitResult* PointHit);
 protected:
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 private:
+    void SpawnSurfaceDecal(UMeshComponent& Mesh, const FHitResult& Hit);
     UPROPERTY(Transient) TArray<TObjectPtr<class UDecalComponent>> Decals;
 };
