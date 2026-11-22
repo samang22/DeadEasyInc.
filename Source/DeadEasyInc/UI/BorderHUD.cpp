@@ -1,8 +1,11 @@
 #include "UI/BorderHUD.h"
 #include "Player/DeadEasyIncPlayerController.h"
 #include "Buildings/Building.h"
+#include "Buildings/Defense/BorderGate.h"
 #include "Shared/Health/CombatHealthComponent.h"
 #include "Interaction/BuildingRepairComponent.h"
+#include "Interaction/GateSwitch.h"
+#include "Interaction/InteractionOutlineComponent.h"
 #include "Engine/Canvas.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/Pawn.h"
@@ -16,27 +19,68 @@
 #include "Components/BoxComponent.h"
 #include "EngineUtils.h"
 #include "InputCoreTypes.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
+
+void ABorderHUD::SetOutlineTarget(AActor* Target)
+{
+    if (OutlineActor.Get() == Target) return;
+    if (UInteractionOutlineComponent* Previous = OutlineComponent.Get())
+        Previous->SetFocused(false);
+
+    OutlineActor = Target;
+    OutlineComponent = Target ? Target->FindComponentByClass<UInteractionOutlineComponent>() : nullptr;
+    if (UInteractionOutlineComponent* Current = OutlineComponent.Get())
+        Current->SetFocused(true);
+}
+
+void ABorderHUD::UpdateOutlineStrength(bool bTransitioning)
+{
+    if (!OutlineParameters) return;
+    const float Target = bTransitioning ? .15f : 1.f;
+    if (OutlineStrength == Target) return;
+
+    const float NextStrength = FMath::FInterpConstantTo(OutlineStrength, Target, GetWorld()->GetDeltaSeconds(), 2.8f);
+    if (NextStrength == OutlineStrength) return;
+    if (auto* Parameters = GetWorld()->GetParameterCollectionInstance(OutlineParameters))
+    {
+        Parameters->SetScalarParameterValue(TEXT("UnfocusedStrength"), NextStrength);
+        OutlineStrength = NextStrength;
+    }
+}
+
+void ABorderHUD::EndPlay(const EEndPlayReason::Type Reason)
+{
+    SetOutlineTarget(nullptr);
+    if (OutlineParameters && OutlineStrength != 1.f && GetWorld())
+        if (auto* Parameters = GetWorld()->GetParameterCollectionInstance(OutlineParameters))
+            Parameters->SetScalarParameterValue(TEXT("UnfocusedStrength"), 1.f);
+    Super::EndPlay(Reason);
+}
 
 void ABorderHUD::DrawHUD()
 {
     Super::DrawHUD();
     if (auto* Player=Cast<ADeadEasyIncPlayerController>(PlayerOwner); Canvas && Player && Player->bPauseMenuOpen)
-    { DrawPauseMenu(Player);return; }
+    { SetOutlineTarget(nullptr);DrawPauseMenu(Player);return; }
     APawn* Pawn = PlayerOwner ? PlayerOwner->GetPawn() : nullptr;
     UBuildingRepairComponent* Repair = Pawn ? Pawn->FindComponentByClass<UBuildingRepairComponent>() : nullptr;
-    if (!Canvas || !Repair) return;
-    if (const ABorderGameMode* Mode = GetWorld()->GetAuthGameMode<ABorderGameMode>())
+    if (!Canvas || !Repair) { SetOutlineTarget(nullptr);return; }
+    const ABorderGameMode* Mode = GetWorld()->GetAuthGameMode<ABorderGameMode>();
+    UpdateOutlineStrength(Mode && Mode->bTransitioning);
+    if (Mode)
     {
         DrawText(FString::Printf(TEXT("Day %d - %s"), Mode->DayNumber, Mode->bTransitioning ? TEXT("CLOSING GATE") : Mode->bIsNight ? TEXT("NIGHT") : TEXT("DAY")),
             FLinearColor::White, 30, 30);
         if (Mode->bGameOver)
         {
+            SetOutlineTarget(nullptr);
             DrawText(TEXT("GAME OVER - Returning to dawn..."), FLinearColor::Red,
                 Canvas->SizeX * 0.5f - 180, Canvas->SizeY * 0.5f - 60);
             return;
         }
         if (Mode->bTransitioning)
         {
+            SetOutlineTarget(nullptr);
             DrawText(TEXT("야간 근무 준비 중..."),FLinearColor::White,Canvas->SizeX*.5f-100,Canvas->SizeY*.75f);
             return;
         }
@@ -45,16 +89,18 @@ void ABorderHUD::DrawHUD()
     }
     const float X = Canvas->SizeX * 0.5f;
     const float Y = Canvas->SizeY * 0.5f;
+    AActor* InteractionTarget = nullptr;
+    bool bUsingEquipment = false;
     if (UPlayerLoadoutComponent* Loadout = Pawn->FindComponentByClass<UPlayerLoadoutComponent>())
     {
-        DrawLoadout(Loadout);
+        InteractionTarget = DrawLoadout(Loadout, bUsingEquipment);
         if (Loadout->bMenuOpen)
         {
             if (!Loadout->PendingAction.IsNone()) DrawTransactionConfirmation(Loadout);
             else if (Loadout->UpgradeBuilding) DrawUpgrade(Loadout);
             else if (Loadout->bNightConfirmationOpen) DrawNightConfirmation(Loadout);
             else DrawStationMenu(Loadout);
-            DrawNotifications(Loadout);return;
+            SetOutlineTarget(nullptr);DrawNotifications(Loadout);return;
         }
         DrawNotifications(Loadout);
     }
@@ -62,6 +108,8 @@ void ABorderHUD::DrawHUD()
     DrawLine(X - 4, Y, X + 4, Y, FLinearColor::White);
     DrawLine(X, Y - 4, X, Y + 4, FLinearColor::White);
     ABuilding* Wall = Repair->GetFocusedBuilding();
+    const bool bCanOutline = !bUsingEquipment && (!Mode || !Mode->bIsNight) && PlayerOwner->GetViewTarget() == Pawn && !Pawn->ActorHasTag(TEXT("Dead"));
+    SetOutlineTarget(bCanOutline ? (InteractionTarget ? InteractionTarget : Wall) : nullptr);
     if (!Wall) return;
     DrawText(FString::Printf(TEXT("%s: %.0f / %.0f"), *Wall->GetBuildingName().ToString(), Wall->CombatHealth->Health, Wall->CombatHealth->MaxHealth),
         FLinearColor::White, X - 100, Y + 30);
@@ -88,7 +136,7 @@ static FString ResourceCostText(const TMap<FName,int32>& Cost)
     return Text.IsEmpty() ? TEXT("Free") : Text;
 }
 
-void ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout)
+AActor* ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout, bool& bUsingEquipment)
 {
     auto DrawRight=[&](const FString& Text,const FLinearColor& Color,float Y)
     {
@@ -134,14 +182,24 @@ void ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout)
                 DrawText(TEXT("▼ 시체 투입구"),FLinearColor(.3f,1.f,.6f),Screen.X-65,Screen.Y-20,nullptr,1.2f);
         }
     DrawText(Loadout->Message,FLinearColor(.9f,.8f,.4f),30,95);
-    if (!Loadout->bMenuOpen && Loadout->GetFocusedStation())
-        DrawText(TEXT("F - Open station"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-100,Canvas->SizeY*.5f+85);
+    AProgressionStation* Station = nullptr;
+    AGateSwitch* Switch = nullptr;
+    AActor* Equipment = nullptr;
+    ACorpseProcessor* Processor = nullptr;
+    bUsingEquipment = EquipmentWork && EquipmentWork->IsPushing();
     if (!Loadout->bMenuOpen)
-        if (const auto* Work=Loadout->GetOwner()->FindComponentByClass<UCorpseHandlingComponent>())
-            if (Work->IsPushing() || Work->GetUsableEquipment())
-                DrawText(Work->IsPushing() ? TEXT("F - 장비 사용 종료") : TEXT("F - 장비 사용"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-90,Canvas->SizeY*.5f+110,nullptr,1.2f);
-    if (!Loadout->bMenuOpen && Loadout->GetFocusedGateSwitch())
-        DrawText(TEXT("F - 문 닫고 야간 근무 시작"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-140,Canvas->SizeY*.5f+85);
+    {
+        Station = Loadout->GetFocusedStation();
+        Switch = Loadout->GetFocusedGateSwitch();
+        if (EquipmentWork && !bUsingEquipment)
+            Equipment = EquipmentWork->GetUsableEquipment(&Processor);
+        if (Station)
+            DrawText(TEXT("F - Open station"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-100,Canvas->SizeY*.5f+85);
+        if (bUsingEquipment || Equipment)
+            DrawText(bUsingEquipment ? TEXT("F - 장비 사용 종료") : TEXT("F - 장비 사용"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-90,Canvas->SizeY*.5f+110,nullptr,1.2f);
+        if (Switch)
+            DrawText(TEXT("F - 문 닫고 야간 근무 시작"),FLinearColor(.4f,1.f,.5f),Canvas->SizeX*.5f-140,Canvas->SizeY*.5f+85);
+    }
     if (GetWorld()->GetTimeSeconds()-Loadout->LastHitTime < .15f)
     {
         const float X=Canvas->SizeX*.5f,Y=Canvas->SizeY*.5f;
@@ -153,6 +211,11 @@ void ABorderHUD::DrawLoadout(UPlayerLoadoutComponent* Loadout)
         DrawText(TEXT("HEADSHOT"),FLinearColor(1.f,.7f,.05f),Canvas->SizeX*.5f-55,Canvas->SizeY*.5f-45,nullptr,1.3f);
     if (GetWorld()->GetTimeSeconds()<Loadout->DamageDebugUntil)
         DrawText(Loadout->DamageDebugText,FLinearColor(.4f,1.f,1.f),30,165);
+
+    if (Equipment) return Equipment;
+    if (Processor) return Processor;
+    if (Switch && IsValid(Switch->Gate.Get())) return Switch;
+    return Station && Station->Condition != EBuildingCondition::Destroyed ? Station : nullptr;
 }
 
 void ABorderHUD::DrawStationMenu(UPlayerLoadoutComponent* Loadout)

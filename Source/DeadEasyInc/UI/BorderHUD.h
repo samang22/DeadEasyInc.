@@ -8,6 +8,7 @@ class ABorderGameMode;
 class ACorpseProcessor;
 class AHandcart;
 class UFont;
+class UMaterialParameterCollection;
 
 UCLASS()
 class DEADEASYINC_API ABorderHUD : public AHUD
@@ -21,7 +22,15 @@ private:
     TObjectPtr<UFont> ShiftGuideFont;
 
     void DrawPauseMenu(class ADeadEasyIncPlayerController* Player);
-    void DrawLoadout(class UPlayerLoadoutComponent* Loadout);
+    AActor* DrawLoadout(class UPlayerLoadoutComponent* Loadout, bool& bUsingEquipment);
+    void SetOutlineTarget(AActor* Target);
+    void UpdateOutlineStrength(bool bTransitioning);
+    UPROPERTY(EditDefaultsOnly, Category="Interaction|Outline")
+    TObjectPtr<UMaterialParameterCollection> OutlineParameters;
+    float OutlineStrength = 1.f;
+    virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+    TWeakObjectPtr<AActor> OutlineActor;
+    TWeakObjectPtr<class UInteractionOutlineComponent> OutlineComponent;
     void DrawStationMenu(class UPlayerLoadoutComponent* Loadout);
     void DrawNightConfirmation(class UPlayerLoadoutComponent* Loadout);
     void DrawUpgrade(class UPlayerLoadoutComponent* Loadout);

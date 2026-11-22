@@ -202,13 +202,15 @@ AHandcart* UCorpseHandlingComponent::GetUsableHandcart() const
 {
     return Cast<AHandcart>(GetUsableEquipment());
 }
-AActor* UCorpseHandlingComponent::GetUsableEquipment() const
+AActor* UCorpseHandlingComponent::GetUsableEquipment(ACorpseProcessor** FocusedProcessor) const
 {
+    if (FocusedProcessor) *FocusedProcessor = nullptr;
     if (!CanWork() || IsPushing()) return nullptr;
     auto* Pawn=Cast<APawn>(GetOwner());
     const auto* Player=Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
     if (!Player) return nullptr;
     FHitResult FocusHit;AActor* Focused=Focus(FocusHit);
+    if (FocusedProcessor) *FocusedProcessor = Cast<ACorpseProcessor>(Focused);
     FVector Eye;FRotator View;Player->GetPlayerViewPoint(Eye,View);
     const float Reach=Settings ? Settings->CartInteractionReach : 350.f;
     auto Eligible=[&](AActor* Actor)

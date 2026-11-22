@@ -28,7 +28,7 @@ public:
     class AElectricCart* GetMountedVehicle() const; // Legacy compatibility only.
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Transient,Category="Equipment") TWeakObjectPtr<AActor> CurrentEquipment;
     class IUsableEquipment* GetUsedEquipment() const;
-    AActor* GetUsableEquipment() const;
+    AActor* GetUsableEquipment(class ACorpseProcessor** FocusedProcessor = nullptr) const;
     bool EndEquipmentUse(bool bForce = false);
     class AHandcart* GetUsableHandcart() const;
     void StopPushing();
