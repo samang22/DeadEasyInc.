@@ -162,7 +162,8 @@ bool AHandcart::EndUse(APawn* User, bool bForce)
 bool AHandcart::StartPush(APawn* Player)
 {
     if (!Player || Driver || FVector::DistSquared2D(Player->GetActorLocation(),GetActorLocation())>FMath::Square(450.f)) return false;
-    Driver=Player;CartMovement->BeginPush(Player);SetActorTickEnabled(true);
+    if (!CartMovement->BeginPush(Player)) return false;
+    Driver=Player;SetActorTickEnabled(true);
     return true;
 }
 void AHandcart::StopPush()

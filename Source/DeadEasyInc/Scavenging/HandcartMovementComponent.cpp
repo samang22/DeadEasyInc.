@@ -2,8 +2,10 @@
 #include "Scavenging/ScavengingData.h"
 #include "Components/BoxComponent.h"
 #include "Components/SceneComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "GameFramework/Character.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GameFramework/Controller.h"
 #include "Engine/World.h"
 
 UHandcartMovementComponent::UHandcartMovementComponent() { PrimaryComponentTick.bCanEverTick=false; }
@@ -14,13 +16,53 @@ void UHandcartMovementComponent::Configure(UScavengingSettings* InSettings, UBox
     Settings=InSettings;Collision=InCollision;WheelAxle=InWheelAxle;
     GroundContact = InGroundContact;
 }
-void UHandcartMovementComponent::BeginPush(APawn* Player)
+float UHandcartMovementComponent::GetPushDistance() const
 {
-    SnapToGround(Player, true);
-    LastWheelLocation=GetOwner()->GetActorLocation();
+    return Settings ? Settings->CartPushDistance : 200.f;
+}
+
+bool UHandcartMovementComponent::BeginPush(APawn* Player)
+{
+    auto* Character = Cast<ACharacter>(Player);
+    if (!IsValid(Character)) return false;
+
+    const AActor* Cart = GetOwner();
+    auto* Movement = Character->GetCharacterMovement();
+    const auto* Capsule = Character->GetCapsuleComponent();
+    const FRotator Facing(0.f, Cart->GetActorRotation().Yaw, 0.f);
+    FVector Position = Cart->GetActorLocation() - Facing.Vector() * GetPushDistance();
+    FCollisionQueryParams GroundParams(SCENE_QUERY_STAT(HandcartGripGround), false, Cart);
+    GroundParams.AddIgnoredActor(Character);
+    FHitResult Ground;
+    if (!GetWorld()->LineTraceSingleByObjectType(Ground, Position + FVector(0, 0, 100), Position - FVector(0, 0, 350),
+            FCollisionObjectQueryParams(ECC_WorldStatic), GroundParams) || !Movement->IsWalkable(Ground))
+        return false;
+
+    Position.Z = Ground.ImpactPoint.Z + Capsule->GetScaledCapsuleHalfHeight() + 2.f;
+    const FCollisionShape Shape = Capsule->GetCollisionShape();
+    const ECollisionChannel Channel = Capsule->GetCollisionObjectType();
+    FCollisionQueryParams MoveParams(SCENE_QUERY_STAT(HandcartGripClearance), false, Character);
+    const FCollisionResponseParams Responses(Capsule->GetCollisionResponseToChannels());
+    if (GetWorld()->OverlapBlockingTestByChannel(Position, FQuat::Identity, Channel, Shape, MoveParams, Responses) ||
+        GetWorld()->SweepTestByChannel(Character->GetActorLocation(), Position, FQuat::Identity, Channel, Shape, MoveParams, Responses))
+        return false;
+
+    if (!Character->SetActorLocationAndRotation(Position, Facing, false, nullptr, ETeleportType::TeleportPhysics))
+        return false;
+    if (AController* Controller = Character->GetController())
+    {
+        FRotator View = Controller->GetControlRotation();
+        View.Yaw = Facing.Yaw;
+        Controller->SetControlRotation(View);
+    }
+    Movement->StopMovementImmediately();
+    NormalSpeed = Movement->MaxWalkSpeed;
+    Movement->MaxWalkSpeed = FMath::Min(NormalSpeed, Settings ? Settings->CartSpeed : 350.f);
     if (Collision) Collision->IgnoreActorWhenMoving(Player, true);
-    if (auto* Character=Cast<ACharacter>(Player))
-    { NormalSpeed=Character->GetCharacterMovement()->MaxWalkSpeed;Character->GetCharacterMovement()->MaxWalkSpeed=FMath::Min(NormalSpeed,Settings ? Settings->CartSpeed : 350.f); }
+    LastWheelLocation = Cart->GetActorLocation();
+    LastDriverLocation = Character->GetActorLocation();
+    LastDriverYaw = Facing.Yaw;
+    return true;
 }
 void UHandcartMovementComponent::EndPush(APawn* Player)
 {
@@ -71,9 +113,15 @@ void UHandcartMovementComponent::Advance(APawn* Player)
 {
     if (!IsValid(Player) || !HasGroundClearance(Collision, GroundContact)) return;
     AActor* Cart = GetOwner();
+    const FVector DriverLocation = Player->GetActorLocation();
     const FRotator Rotation(0.f, Player->GetViewRotation().Yaw, 0.f);
-    const float PushDistance = Settings ? Settings->CartPushDistance : 200.f;
-    FVector Desired = Player->GetActorLocation() + Rotation.Vector() * PushDistance;
+    if (FVector::DistSquared2D(DriverLocation, LastDriverLocation) <= FMath::Square(.1f) &&
+        FMath::Abs(FMath::FindDeltaAngleDegrees(LastDriverYaw, Rotation.Yaw)) <= .1f)
+        return;
+
+    LastDriverLocation = DriverLocation;
+    LastDriverYaw = Rotation.Yaw;
+    FVector Desired = DriverLocation + Rotation.Vector() * GetPushDistance();
     Desired.Z = Cart->GetActorLocation().Z;
 
     FCollisionQueryParams Params(SCENE_QUERY_STAT(CartMove), false, Cart);
